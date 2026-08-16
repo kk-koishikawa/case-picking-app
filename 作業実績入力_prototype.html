@@ -1652,6 +1652,7 @@ $('settingsBtn').addEventListener('click', ()=>{
   pendingNewCategoryFromJson = null;
   initEditingGroupFromDevice();
   switchSettingsTab((appSettings.groups||[]).length === 0 ? 'create' : 'select');
+  $('settingsOverlay').classList.add('show');
 });
 $('settingsCancel').addEventListener('click', ()=> $('settingsOverlay').classList.remove('show'));
 $('settingsSave').addEventListener('click', async ()=>{
