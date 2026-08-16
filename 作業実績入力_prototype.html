@@ -379,7 +379,7 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
         <div class="pick-store-view" id="pickStoreView" style="display:none;">
           <div class="pick-toggle">
             <button class="pick-toggle-btn active" id="pickModeSeqBtn">作業順</button>
-            <button class="pick-toggle-btn" id="pickModeCaseBtn">ケース順</button>
+            <button class="pick-toggle-btn" id="pickModeCaseBtn">コース順</button>
           </div>
           <div class="pick-store-list" id="pickStoreList"></div>
           <div class="pick-manual-link" id="pickManualLink">→ コース№・店№を直接入力する</div>
@@ -519,8 +519,9 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
 <div class="overlay admin-overlay" id="adminOverlay">
   <div class="admin-card">
     <div class="admin-head">
-      <h2>本日の実績ログ</h2>
+      <h2 id="adminHeading">本日の実績ログ</h2>
       <div style="display:flex;gap:10px;align-items:center;">
+        <input type="date" id="reportDateInput" style="padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:14px;">
         <button class="export-btn" id="exportXlsxBtn" style="background:var(--muted);">XLSX(現行互換)</button>
         <button class="export-btn" id="exportBtn">CSV(詳細版)</button>
         <button class="close-x" id="adminClose">&times;</button>
@@ -976,7 +977,7 @@ function handleWorkerEnter(){
 }
 
 // ---------- tap-to-pick course/store (from today's order data) ----------
-let pickMode = 'seq'; // 'seq' (作業順) | 'case' (ケース順)
+let pickMode = 'seq'; // 'seq' (作業順) | 'case' (コース順)
 
 function showPickStore(){
   step = 'pickStore';
@@ -1173,9 +1174,42 @@ $('resultOverlay').addEventListener('click', ()=>{
 });
 
 // ---------- admin ----------
-$('adminBtn').addEventListener('click', ()=>{
-  renderLogTable();
+let reportDate = null;
+let reportLog = [];
+function fmtDateHeading(dateStr){
+  const [y,m,d] = dateStr.split('-');
+  return `${parseInt(m,10)}/${parseInt(d,10)}の実績ログ`;
+}
+async function loadReportLog(dateStr){
+  const siteCode = appSettings.siteCode;
+  if(!siteCode){ reportLog = []; return; }
+  const dayStart = dateStr + 'T00:00:00';
+  const dayEnd = dateStr + 'T23:59:59.999';
+  const rows = await sbSelect('work_log',
+    `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&order=start_at.desc`);
+  reportLog = (rows||[]).map(r=>({
+    id: r.id, no: r.worker_no, name: r.worker_name, groupId: r.group_id, groupName: r.group_name,
+    courseNo: r.course_no, courseName: r.course_name, storeNo: r.store_no, count: r.count,
+    startISO: r.start_at, endISO: r.end_at, durationSec: r.duration_sec,
+    productivity: r.productivity, cancelled: r.cancelled
+  }));
+}
+$('adminBtn').addEventListener('click', async ()=>{
+  reportDate = todayKey();
+  $('reportDateInput').value = reportDate;
+  $('adminHeading').textContent = fmtDateHeading(reportDate);
+  $('logBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">読み込み中…</td></tr>';
   $('adminOverlay').classList.add('show');
+  await loadReportLog(reportDate);
+  renderLogTable();
+});
+$('reportDateInput').addEventListener('change', async (e)=>{
+  reportDate = e.target.value;
+  if(!reportDate) return;
+  $('adminHeading').textContent = fmtDateHeading(reportDate);
+  $('logBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">読み込み中…</td></tr>';
+  await loadReportLog(reportDate);
+  renderLogTable();
 });
 $('adminClose').addEventListener('click', ()=> $('adminOverlay').classList.remove('show'));
 
@@ -1297,12 +1331,12 @@ $('progressClose').addEventListener('click', ()=> $('progressOverlay').classList
 let expandedWorkers = new Set();
 function renderLogTable(){
   const body = $('logBody');
-  if(todayLog.length===0){
-    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">本日の記録はまだありません</td></tr>';
+  if(reportLog.length===0){
+    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">この日の記録はありません</td></tr>';
     return;
   }
   const byWorker = {};
-  todayLog.forEach(r=>{
+  reportLog.forEach(r=>{
     if(!byWorker[r.no]) byWorker[r.no] = {no:r.no, name:r.name, rows:[]};
     byWorker[r.no].rows.push(r);
   });
@@ -1349,21 +1383,20 @@ function renderLogTable(){
     btn.addEventListener('click', (ev)=>{
       ev.stopPropagation();
       const id = btn.getAttribute('data-id');
-      const row = todayLog.find(r=>String(r.id)===id);
+      const row = reportLog.find(r=>String(r.id)===id);
       if(!row) return;
       showConfirm(`${row.name}さん(担№${row.no}) ${row.courseName}/店${row.storeNo}・${row.count}個口 の記録を削除します。テスト入力の削除用です。よろしいですか？`, async ()=>{
         await sbDelete('work_log', `id=eq.${id}`);
-        todayLog = todayLog.filter(r=>String(r.id)!==id);
+        reportLog = reportLog.filter(r=>String(r.id)!==id);
         renderLogTable();
-        renderSummary();
-        if($('progressOverlay').classList.contains('show')) renderProgress();
+        if(reportDate === todayKey()) await refreshFromServer();
       });
     });
   });
 }
 $('exportBtn').addEventListener('click', ()=>{
   const header = ['担当者№','氏名','作業グループ','コース','店№','個口数','開始','終了','作業時間(秒)','生産性/h','取消'];
-  const rows = todayLog.map(r=>[
+  const rows = reportLog.map(r=>[
     r.no, r.name, r.groupName||'', r.courseName, r.storeNo, r.count,
     r.startISO, r.endISO, Math.round(r.durationSec), r.productivity, r.cancelled?'1':'0'
   ]);
@@ -1371,7 +1404,7 @@ $('exportBtn').addEventListener('click', ()=>{
   const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `作業実績_${todayKey()}.csv`;
+  a.href = url; a.download = `作業実績_${reportDate}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 });
@@ -1379,7 +1412,7 @@ $('exportBtn').addEventListener('click', ()=>{
 $('exportXlsxBtn').addEventListener('click', ()=>{
   const header = ['担当者№','コース','個口数','開始','終了','作業時間','秒'];
   const aoa = [header];
-  const sorted = [...todayLog].sort((a,b)=> new Date(a.startISO)-new Date(b.startISO));
+  const sorted = [...reportLog].sort((a,b)=> new Date(a.startISO)-new Date(b.startISO));
   sorted.forEach(r=>{
     const codeStr = String(r.courseNo) + String(r.storeNo).padStart(2,'0');
     aoa.push([r.no, codeStr, r.count, new Date(r.startISO), new Date(r.endISO), '', '']);
@@ -1399,7 +1432,7 @@ $('exportXlsxBtn').addEventListener('click', ()=>{
   }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Data');
-  XLSX.writeFile(wb, `作業時間測定_v20_Data_${todayKey()}.xlsx`);
+  XLSX.writeFile(wb, `作業時間測定_v20_Data_${reportDate}.xlsx`);
 });
 
 // ---------- roster import (logi_meter CSV) ----------
