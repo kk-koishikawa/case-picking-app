@@ -293,7 +293,7 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
   background:var(--panel);border-radius:16px;width:min(880px,92vw);margin-top:5vh;max-height:88vh;
   display:flex;flex-direction:column;overflow:hidden;
 }
-.admin-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);}
+.admin-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:18px 22px;border-bottom:1px solid var(--line);}
 .admin-head h2{margin:0;font-size:19px;}
 .admin-body{overflow-y:auto;padding:0 22px 22px;}
 table.log{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;}
@@ -520,8 +520,8 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
   <div class="admin-card">
     <div class="admin-head">
       <h2 id="adminHeading">本日の実績ログ</h2>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <input type="date" id="reportDateInput" style="padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:14px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="date" id="reportDateInput" style="padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:14px;min-width:150px;">
         <button class="export-btn" id="exportXlsxBtn" style="background:var(--muted);">XLSX(現行互換)</button>
         <button class="export-btn" id="exportBtn">CSV(詳細版)</button>
         <button class="close-x" id="adminClose">&times;</button>
@@ -693,6 +693,7 @@ async function refreshFromServer(){
   renderWorkingList();
   renderSummary();
   if($('progressOverlay').classList.contains('show')) renderProgress();
+  if(step === 'pickStore') renderPickStoreList();
 }
 
 // ---------- rendering ----------
@@ -989,9 +990,20 @@ function showPickStore(){
   $('pickStoreView').style.display = 'flex';
   renderPickStoreList();
 }
+function busyKeysForGroup(groupId){
+  const keys = new Set();
+  todayLog.forEach(r=>{
+    if(!r.cancelled && r.groupId === groupId) keys.add(r.courseNo+'-'+r.storeNo);
+  });
+  Object.values(sessions).forEach(s=>{
+    if(s.groupId === groupId) keys.add(s.courseNo+'-'+s.storeNo);
+  });
+  return keys;
+}
 function renderPickStoreList(){
   const orderMap = currentGroupOrderMap() || {};
-  let entries = Object.values(orderMap);
+  const busy = busyKeysForGroup(ctx.groupId);
+  let entries = Object.values(orderMap).filter(e => !busy.has(e.courseNo+'-'+e.storeNo));
   if(pickMode === 'seq'){
     entries = entries.slice().sort((a,b)=> (a.seq||0) - (b.seq||0));
   } else {
@@ -1001,7 +1013,7 @@ function renderPickStoreList(){
   $('pickModeCaseBtn').classList.toggle('active', pickMode === 'case');
   const list = $('pickStoreList');
   if(entries.length === 0){
-    list.innerHTML = '<div class="working-empty">本日の受注データがありません</div>';
+    list.innerHTML = '<div class="working-empty">残っているコース・店はありません(すべて完了、または作業中です)</div>';
     return;
   }
   list.innerHTML = entries.map(e => `
