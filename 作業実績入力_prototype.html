@@ -303,6 +303,14 @@ table.log th{
 }
 table.log td{padding:8px;border-bottom:1px solid var(--line);}
 table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
+.worker-summary-row{cursor:pointer;background:#F7F5F0;}
+.worker-summary-row:active{background:#EFEBE2;}
+.worker-summary-row td{border-bottom:1px solid var(--line);padding:10px 8px;}
+.worker-summary-inner{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
+.wsi-left{font-weight:700;}
+.wsi-arrow{display:inline-block;width:14px;color:var(--steel);}
+.wsi-right{color:var(--muted);font-family:'Space Mono',monospace;font-size:12px;}
+.worker-detail-row td{background:#FCFBF8;}
 .log-del-btn{background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
 .log-del-btn:active{background:#FBEAE8;}
 .close-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
@@ -1156,8 +1164,13 @@ $('confirmNo').addEventListener('click', ()=>{
 // ---------- result overlay ----------
 function showResult(){
   $('resultOverlay').classList.add('show');
-  setTimeout(()=>{ $('resultOverlay').classList.remove('show'); }, 3200);
+  clearTimeout(window._resultDismissTimer);
+  window._resultDismissTimer = setTimeout(()=>{ $('resultOverlay').classList.remove('show'); }, 1200);
 }
+$('resultOverlay').addEventListener('click', ()=>{
+  clearTimeout(window._resultDismissTimer);
+  $('resultOverlay').classList.remove('show');
+});
 
 // ---------- admin ----------
 $('adminBtn').addEventListener('click', ()=>{
@@ -1281,23 +1294,60 @@ $('progressBtn').addEventListener('click', ()=>{
 });
 $('progressClose').addEventListener('click', ()=> $('progressOverlay').classList.remove('show'));
 
+let expandedWorkers = new Set();
 function renderLogTable(){
   const body = $('logBody');
   if(todayLog.length===0){
     body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">本日の記録はまだありません</td></tr>';
     return;
   }
-  const sorted = [...todayLog].sort((a,b)=> new Date(b.startISO)-new Date(a.startISO));
-  body.innerHTML = sorted.map(r=>`
-    <tr class="${r.cancelled?'cancelled':''}">
-      <td>${r.no}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.groupName||'-')}</td><td>${escapeHtml(r.courseName)}</td>
-      <td>${r.storeNo}</td><td>${r.count}</td>
-      <td>${fmtTimeShort(r.startISO)}</td><td>${fmtTimeShort(r.endISO)}</td>
-      <td>${fmtDuration(r.durationSec)}</td><td>${r.cancelled ? '取消' : r.productivity}</td>
-      <td><button class="log-del-btn" data-id="${r.id}">削除</button></td>
-    </tr>`).join('');
+  const byWorker = {};
+  todayLog.forEach(r=>{
+    if(!byWorker[r.no]) byWorker[r.no] = {no:r.no, name:r.name, rows:[]};
+    byWorker[r.no].rows.push(r);
+  });
+  const workers = Object.values(byWorker).sort((a,b)=>{
+    const aLatest = Math.max(...a.rows.map(r=>new Date(r.startISO).getTime()));
+    const bLatest = Math.max(...b.rows.map(r=>new Date(r.startISO).getTime()));
+    return bLatest - aLatest;
+  });
+
+  body.innerHTML = workers.map(w=>{
+    const valid = w.rows.filter(r=>!r.cancelled);
+    const totalPieces = valid.reduce((s,r)=>s+r.count,0);
+    const avgProd = valid.length ? Math.round(valid.reduce((s,r)=>s+r.productivity,0)/valid.length) : 0;
+    const isOpen = expandedWorkers.has(String(w.no));
+    const rowsSorted = [...w.rows].sort((a,b)=> new Date(b.startISO)-new Date(a.startISO));
+    const summaryRow = `
+      <tr class="worker-summary-row" data-wno="${w.no}">
+        <td colspan="11">
+          <div class="worker-summary-inner">
+            <div class="wsi-left"><span class="wsi-arrow">${isOpen?'▼':'▶'}</span> 担№${w.no} ・ ${escapeHtml(w.name)}</div>
+            <div class="wsi-right">${w.rows.length}件 ・ ${totalPieces}個口 ・ 平均${avgProd}/h</div>
+          </div>
+        </td>
+      </tr>`;
+    const detailRows = rowsSorted.map(r=>`
+      <tr class="worker-detail-row ${r.cancelled?'cancelled':''}" data-wno="${w.no}" style="${isOpen?'':'display:none;'}">
+        <td>${r.no}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.groupName||'-')}</td><td>${escapeHtml(r.courseName)}</td>
+        <td>${r.storeNo}</td><td>${r.count}</td>
+        <td>${fmtTimeShort(r.startISO)}</td><td>${fmtTimeShort(r.endISO)}</td>
+        <td>${fmtDuration(r.durationSec)}</td><td>${r.cancelled ? '取消' : r.productivity}</td>
+        <td><button class="log-del-btn" data-id="${r.id}">削除</button></td>
+      </tr>`).join('');
+    return summaryRow + detailRows;
+  }).join('');
+
+  body.querySelectorAll('.worker-summary-row').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const wno = tr.getAttribute('data-wno');
+      if(expandedWorkers.has(wno)) expandedWorkers.delete(wno); else expandedWorkers.add(wno);
+      renderLogTable();
+    });
+  });
   body.querySelectorAll('.log-del-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
       const id = btn.getAttribute('data-id');
       const row = todayLog.find(r=>String(r.id)===id);
       if(!row) return;
