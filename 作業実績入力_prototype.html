@@ -430,7 +430,8 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;"></div>
 
     <div class="lbl" style="margin-bottom:8px;">この端末の作業グループ(1端末1グループ)</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">この端末が扱うグループの名前と棚番の範囲を登録してください。棚番の範囲は、離れた範囲を複数(例:ドリンク100000〜200000・ビール300000〜400000)まとめて1つのグループにすることもできます。</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">この端末が扱うグループの名前と棚番の範囲を登録してください。棚番の範囲は、離れた範囲を複数(例:ドリンク100000〜200000・ビール300000〜400000)まとめて1つのグループにすることもできます。</div>
+    <div class="pick-manual-link" id="startNewGroupLink" style="text-align:left;margin-bottom:14px;">＋ 別の新しいグループとして登録する</div>
 
     <div class="locked-item" style="margin-bottom:10px;">
       <div class="lbl">グループ名</div>
@@ -1616,15 +1617,32 @@ $('lastRunFileInput').addEventListener('change', async (e)=>{
           $('lastRunHint').textContent = `この端末のグループを「${g.name}」に読み込みました。内容を確認して「保存」を押してください。`;
         });
       });
+    } else if(editingGroup.id){
+      // already editing a saved, existing group -> never silently wipe it.
+      // just inform the person; starting a fresh group requires an explicit action.
+      pendingNewCategoryFromJson = data.category_name;
+      $('lastRunHint').textContent =
+        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」の作業グループはまだ無いようです。`+
+        `今編集中の「${editingGroup.name}」の内容はそのままです。この端末を「${data.category_name}」用として新しく登録したい場合だけ、下の「＋別の新しいグループとして登録する」を押してください。`;
     } else {
-      editingGroup = {id:null, name:'', folder:data.category_name, ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
-      renderDeviceGroupEditor();
+      editingGroup.folder = data.category_name;
+      $('deviceGroupFolderInput').value = editingGroup.folder;
       $('lastRunHint').textContent =
         `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」の作業グループがまだ無いので、新規登録として名前と棚番の範囲を入力してください。`;
     }
   }catch(err){
     alert('last_run.jsonの読み込みに失敗しました');
   }
+});
+
+let pendingNewCategoryFromJson = null;
+$('startNewGroupLink').addEventListener('click', ()=>{
+  editingGroup = {
+    id:null, name:'', folder: pendingNewCategoryFromJson || '',
+    ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60
+  };
+  renderDeviceGroupEditor();
+  $('lastRunHint').textContent = '新しいグループの登録内容を入力してください。';
 });
 
 $('settingsBtn').addEventListener('click', ()=>{
@@ -1654,7 +1672,23 @@ $('settingsSave').addEventListener('click', async ()=>{
     return;
   }
   editingGroup.ranges = validRanges;
-  if(!editingGroup.id) editingGroup.id = 'g' + Date.now();
+
+  if(!editingGroup.id){
+    // this would create a brand-new group -> re-check the server for a name+folder
+    // collision first, so re-typing an existing group's details can never create a duplicate
+    const freshRows = await sbSelect('work_groups', `site_code=eq.${encodeURIComponent(siteCode)}`);
+    const dup = (freshRows||[]).find(r => r.name.trim() === editingGroup.name && r.folder.trim() === editingGroup.folder);
+    if(dup){
+      appSettings.groups = (freshRows||[]).map(r => migrateGroup({
+        id:r.id, name:r.name, folder:r.folder, ranges:r.ranges,
+        expected_productivity: r.expected_productivity, expected_break_minutes: r.expected_break_minutes
+      }));
+      renderOtherGroups();
+      alert(`同じ名前・フォルダの作業グループ「${dup.name}」がすでに登録されています。新規作成せず、下の「拠点内の他の作業グループ」からタップして選び直してください。`);
+      return;
+    }
+    editingGroup.id = 'g' + Date.now();
+  }
 
   localSet('site_code', siteCode);
   appSettings.siteCode = siteCode;
