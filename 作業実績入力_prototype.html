@@ -1377,11 +1377,33 @@ function renderOtherGroups(){
     return;
   }
   wrap.innerHTML = others.map(g => `
-    <div class="locked-item" style="margin-bottom:8px;">
+    <div class="locked-item" style="margin-bottom:8px;cursor:pointer;" data-gid="${g.id}">
       <div class="val" style="font-size:14px;">${escapeHtml(g.name)||'(名称未入力)'}</div>
       <div class="lbl" style="margin-top:2px;font-weight:400;">${escapeHtml(g.folder)} ・ 棚番 ${g.ranges.map(r=>r.min+'〜'+r.max).join(' / ')}</div>
+      <div style="font-size:11px;color:var(--steel);margin-top:4px;">タップしてこの端末のグループにする →</div>
     </div>`).join('');
+  wrap.querySelectorAll('[data-gid]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const g = others.find(x=>x.id===el.getAttribute('data-gid'));
+      editingGroup = JSON.parse(JSON.stringify(g));
+      renderDeviceGroupEditor();
+      $('lastRunHint').textContent = `この端末のグループを「${g.name}」にしました。内容を確認して「保存」を押してください。`;
+    });
+  });
 }
+
+async function refetchGroupsForSiteCode(siteCode){
+  if(!siteCode) return;
+  const rows = await sbSelect('work_groups', `site_code=eq.${encodeURIComponent(siteCode)}&order=name.asc`);
+  appSettings.groups = (rows || []).map(r => migrateGroup({id:r.id, name:r.name, folder:r.folder, ranges:r.ranges}));
+  renderOtherGroups();
+}
+$('siteCodeInput').addEventListener('blur', ()=>{
+  const typed = $('siteCodeInput').value.trim();
+  if(typed && typed !== appSettings.siteCode){
+    refetchGroupsForSiteCode(typed);
+  }
+});
 
 function renderDeviceGroupEditor(){
   $('deviceGroupNameInput').value = editingGroup.name;
