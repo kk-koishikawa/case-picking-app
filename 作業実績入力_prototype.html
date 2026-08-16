@@ -176,6 +176,12 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
   padding:10px 12px;cursor:pointer;
 }
 .device-group-btn:active{background:#F0EDE6;}
+.settings-tabs{display:flex;gap:8px;margin-bottom:14px;}
+.settings-tab-btn{
+  flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);background:#F7F5F0;
+  font-family:'IBM Plex Sans JP';font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;
+}
+.settings-tab-btn.active{background:var(--ink);border-color:var(--ink);color:var(--amber);}
 .device-group-btn.selected{border-color:var(--amber-deep);background:#FBF1DF;}
 .device-group-btn .radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);flex-shrink:0;}
 .device-group-btn.selected .radio{border-color:var(--amber-deep);background:var(--amber-deep);}
@@ -424,40 +430,44 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <input type="file" id="lastRunFileInput" accept=".json" style="display:none;">
       <div style="font-size:12px;color:var(--muted);margin-top:6px;">拠点導入時に一度だけ設定してください。last_run.jsonを読み込むと、この2つを自動入力します(手入力もできます)。</div>
       <div id="lastRunHint" style="font-size:12px;color:var(--steel);margin-top:6px;"></div>
-      <div id="lastRunChooser" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;"></div>
     </div>
 
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;"></div>
 
-    <div class="lbl" style="margin-bottom:8px;">この端末の作業グループ(1端末1グループ)</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">この端末が扱うグループの名前と棚番の範囲を登録してください。棚番の範囲は、離れた範囲を複数(例:ドリンク100000〜200000・ビール300000〜400000)まとめて1つのグループにすることもできます。</div>
-    <div class="pick-manual-link" id="startNewGroupLink" style="text-align:left;margin-bottom:14px;">＋ 別の新しいグループとして登録する</div>
-
-    <div class="locked-item" style="margin-bottom:10px;">
-      <div class="lbl">グループ名</div>
-      <input type="text" id="deviceGroupNameInput" placeholder="例: ドリンク・ビール" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-size:14px;">
+    <div class="settings-tabs">
+      <button class="settings-tab-btn active" id="tabSelectBtn">グループを選ぶ</button>
+      <button class="settings-tab-btn" id="tabCreateBtn">＋ 新しく作る</button>
     </div>
 
-    <div class="lbl" style="margin-bottom:4px;">棚番の範囲(以上・以下の単純な数値比較です。「〇〇番台」のような桁判定ではありません)</div>
-    <div id="deviceRangeList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
-    <button class="mini-btn" id="addRangeBtn" style="margin-bottom:20px;">＋ 範囲を追加</button>
-
-    <div class="lbl" style="margin-bottom:4px;">進捗ダッシュボード用の想定値(実績が溜まるまでの仮の予測に使われます)</div>
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <div class="locked-item" style="flex:1;">
-        <div class="lbl">想定生産性(個/人時)</div>
-        <input type="number" id="expectedProductivityInput" placeholder="300" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
-      </div>
-      <div class="locked-item" style="flex:1;">
-        <div class="lbl">想定休憩時間(分)</div>
-        <input type="number" id="expectedBreakInput" placeholder="60" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
-      </div>
+    <div id="groupSelectPanel">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">この端末が使うグループをタップして選び、「保存」を押してください。棚番の範囲などを直したい時は各グループの「編集」から。</div>
+      <div id="groupSelectList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
     </div>
 
-    <div style="border-top:1px solid var(--line);margin:4px 0 14px;"></div>
+    <div id="groupCreatePanel" style="display:none;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">新しい作業グループの名前と棚番の範囲を登録してください。棚番の範囲は、離れた範囲を複数(例:ドリンク100000〜200000・ビール300000〜400000)まとめて1つのグループにすることもできます。<b>通常はPC側でまとめて作成してください。</b></div>
 
-    <div class="lbl" style="margin-bottom:8px;">拠点内の他の作業グループ(参考・このiPadでは使いません)</div>
-    <div id="otherGroupsList" style="margin-bottom:8px;"></div>
+      <div class="locked-item" style="margin-bottom:10px;">
+        <div class="lbl">グループ名</div>
+        <input type="text" id="deviceGroupNameInput" placeholder="例: ドリンク・ビール" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-size:14px;">
+      </div>
+
+      <div class="lbl" style="margin-bottom:4px;">棚番の範囲(以上・以下の単純な数値比較です。「〇〇番台」のような桁判定ではありません)</div>
+      <div id="deviceRangeList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+      <button class="mini-btn" id="addRangeBtn" style="margin-bottom:20px;">＋ 範囲を追加</button>
+
+      <div class="lbl" style="margin-bottom:4px;">進捗ダッシュボード用の想定値(実績が溜まるまでの仮の予測に使われます)</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <div class="locked-item" style="flex:1;">
+          <div class="lbl">想定生産性(個/人時)</div>
+          <input type="number" id="expectedProductivityInput" placeholder="300" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
+        </div>
+        <div class="locked-item" style="flex:1;">
+          <div class="lbl">想定休憩時間(分)</div>
+          <input type="number" id="expectedBreakInput" placeholder="60" style="width:100%;margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
+        </div>
+      </div>
+    </div>
 
     <div class="cbtns">
       <button class="no" id="settingsCancel">閉じる</button>
@@ -1527,25 +1537,36 @@ $('addRangeBtn').addEventListener('click', ()=>{
   renderRangeList();
 });
 
-function renderOtherGroups(){
-  const wrap = $('otherGroupsList');
-  const others = (appSettings.groups || []).filter(g => g.id !== editingGroup.id);
-  if(others.length === 0){
-    wrap.innerHTML = '<div style="font-size:12px;color:var(--muted);">まだ他のグループは登録されていません</div>';
+let settingsMode = 'select'; // 'select' | 'create'
+
+function renderGroupSelectList(){
+  const wrap = $('groupSelectList');
+  const groups = appSettings.groups || [];
+  if(groups.length === 0){
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--muted);">まだ作業グループがありません。「＋ 新しく作る」から登録してください。</div>';
     return;
   }
-  wrap.innerHTML = others.map(g => `
-    <div class="locked-item" style="margin-bottom:8px;cursor:pointer;" data-gid="${g.id}">
-      <div class="val" style="font-size:14px;">${escapeHtml(g.name)||'(名称未入力)'}</div>
-      <div class="lbl" style="margin-top:2px;font-weight:400;">${escapeHtml(g.folder)} ・ 棚番 ${g.ranges.map(r=>r.min+'〜'+r.max).join(' / ')}</div>
-      <div style="font-size:11px;color:var(--steel);margin-top:4px;">タップしてこの端末のグループにする →</div>
+  wrap.innerHTML = groups.map(g => `
+    <div class="device-group-btn${(settingsMode==='select' && g.id===editingGroup.id) ? ' selected' : ''}" data-gid="${g.id}">
+      <div class="radio"></div>
+      <div style="flex:1;">
+        <div class="dgname">${escapeHtml(g.name)||'(名称未入力)'}</div>
+        <div class="dgmeta">${escapeHtml(g.folder)} ・ 棚番 ${g.ranges.map(r=>r.min+'〜'+r.max).join(' / ')}</div>
+      </div>
+      <div style="font-size:11px;color:var(--steel);font-weight:600;flex-shrink:0;" data-edit="${g.id}">編集</div>
     </div>`).join('');
-  wrap.querySelectorAll('[data-gid]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const g = others.find(x=>x.id===el.getAttribute('data-gid'));
+  wrap.querySelectorAll('.device-group-btn').forEach(el=>{
+    const gid = el.getAttribute('data-gid');
+    el.querySelector('[data-edit]').addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const g = groups.find(x=>x.id===gid);
       editingGroup = JSON.parse(JSON.stringify(g));
-      renderDeviceGroupEditor();
-      $('lastRunHint').textContent = `この端末のグループを「${g.name}」にしました。内容を確認して「保存」を押してください。`;
+      switchSettingsTab('create');
+    });
+    el.addEventListener('click', ()=>{
+      const g = groups.find(x=>x.id===gid);
+      editingGroup = JSON.parse(JSON.stringify(g));
+      renderGroupSelectList();
     });
   });
 }
@@ -1557,7 +1578,7 @@ async function refetchGroupsForSiteCode(siteCode){
     id:r.id, name:r.name, folder:r.folder, ranges:r.ranges,
     expected_productivity: r.expected_productivity, expected_break_minutes: r.expected_break_minutes
   }));
-  renderOtherGroups();
+  renderGroupSelectList();
 }
 $('siteCodeInput').addEventListener('blur', ()=>{
   const typed = $('siteCodeInput').value.trim();
@@ -1572,14 +1593,29 @@ function renderDeviceGroupEditor(){
   $('expectedProductivityInput').value = editingGroup.expectedProductivity;
   $('expectedBreakInput').value = editingGroup.expectedBreakMinutes;
   renderRangeList();
-  renderOtherGroups();
 }
 $('deviceGroupNameInput').addEventListener('input', e=> editingGroup.name = e.target.value);
 $('deviceGroupFolderInput').addEventListener('input', e=> editingGroup.folder = e.target.value);
 $('expectedProductivityInput').addEventListener('input', e=> editingGroup.expectedProductivity = parseFloat(e.target.value)||0);
 $('expectedBreakInput').addEventListener('input', e=> editingGroup.expectedBreakMinutes = parseFloat(e.target.value)||0);
 
+function switchSettingsTab(mode){
+  settingsMode = mode;
+  $('tabSelectBtn').classList.toggle('active', mode==='select');
+  $('tabCreateBtn').classList.toggle('active', mode==='create');
+  $('groupSelectPanel').style.display = mode==='select' ? 'block' : 'none';
+  $('groupCreatePanel').style.display = mode==='create' ? 'block' : 'none';
+  renderDeviceGroupEditor();
+  renderGroupSelectList();
+}
+$('tabSelectBtn').addEventListener('click', ()=> switchSettingsTab('select'));
+$('tabCreateBtn').addEventListener('click', ()=>{
+  editingGroup = {id:null, name:'', folder: pendingNewCategoryFromJson || '', ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
+  switchSettingsTab('create');
+});
+
 $('loadLastRunBtn').addEventListener('click', ()=> $('lastRunFileInput').click());
+let pendingNewCategoryFromJson = null;
 $('lastRunFileInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   e.target.value = '';
@@ -1592,66 +1628,30 @@ $('lastRunFileInput').addEventListener('change', async (e)=>{
       return;
     }
     $('siteCodeInput').value = data.center_name;
-    $('lastRunChooser').innerHTML = '';
     const matches = (appSettings.groups || []).filter(g => g.folder === data.category_name);
 
-    if(matches.length === 1){
-      editingGroup = JSON.parse(JSON.stringify(matches[0]));
-      renderDeviceGroupEditor();
+    if(matches.length >= 1){
+      // one or more groups already exist for this category -> just point at the select tab,
+      // never silently overwrite whatever is currently being edited
+      switchSettingsTab('select');
       $('lastRunHint').textContent =
-        `拠点コード「${data.center_name}」を読み込み、この端末のグループを「${matches[0].name}」に読み込みました。内容を確認して「保存」を押してください。`;
-    } else if(matches.length > 1){
-      $('lastRunHint').textContent =
-        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」のグループが${matches.length}件あります。この端末が使うものを選んでください。`;
-      $('lastRunChooser').innerHTML = matches.map(g => `
-        <div class="device-group-btn" data-gid="${g.id}">
-          <div class="dgname">${escapeHtml(g.name)||'(名称未入力)'}</div>
-          <div class="dgmeta">棚番 ${g.ranges.map(r=>r.min+'〜'+r.max).join(' / ')}</div>
-        </div>`).join('');
-      $('lastRunChooser').querySelectorAll('.device-group-btn').forEach(el=>{
-        el.addEventListener('click', ()=>{
-          const g = matches.find(x=>x.id===el.getAttribute('data-gid'));
-          editingGroup = JSON.parse(JSON.stringify(g));
-          renderDeviceGroupEditor();
-          $('lastRunChooser').innerHTML = '';
-          $('lastRunHint').textContent = `この端末のグループを「${g.name}」に読み込みました。内容を確認して「保存」を押してください。`;
-        });
-      });
-    } else if(editingGroup.id){
-      // already editing a saved, existing group -> never silently wipe it.
-      // just inform the person; starting a fresh group requires an explicit action.
+        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」のグループが下の一覧にあります。この端末が使うものをタップして選び、「保存」を押してください。`;
+    } else {
       pendingNewCategoryFromJson = data.category_name;
       $('lastRunHint').textContent =
-        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」の作業グループはまだ無いようです。`+
-        `今編集中の「${editingGroup.name}」の内容はそのままです。この端末を「${data.category_name}」用として新しく登録したい場合だけ、下の「＋別の新しいグループとして登録する」を押してください。`;
-    } else {
-      editingGroup.folder = data.category_name;
-      $('deviceGroupFolderInput').value = editingGroup.folder;
-      $('lastRunHint').textContent =
-        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」の作業グループがまだ無いので、新規登録として名前と棚番の範囲を入力してください。`;
+        `拠点コード「${data.center_name}」を読み込みました。「${data.category_name}」の作業グループがまだ無いようです。新しく登録する場合は「＋ 新しく作る」タブから(通常はPC側で作成してください)。`;
     }
   }catch(err){
     alert('last_run.jsonの読み込みに失敗しました');
   }
 });
 
-let pendingNewCategoryFromJson = null;
-$('startNewGroupLink').addEventListener('click', ()=>{
-  editingGroup = {
-    id:null, name:'', folder: pendingNewCategoryFromJson || '',
-    ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60
-  };
-  renderDeviceGroupEditor();
-  $('lastRunHint').textContent = '新しいグループの登録内容を入力してください。';
-});
-
 $('settingsBtn').addEventListener('click', ()=>{
   $('siteCodeInput').value = appSettings.siteCode || '';
   $('lastRunHint').textContent = '';
-  $('lastRunChooser').innerHTML = '';
+  pendingNewCategoryFromJson = null;
   initEditingGroupFromDevice();
-  renderDeviceGroupEditor();
-  $('settingsOverlay').classList.add('show');
+  switchSettingsTab((appSettings.groups||[]).length === 0 ? 'create' : 'select');
 });
 $('settingsCancel').addEventListener('click', ()=> $('settingsOverlay').classList.remove('show'));
 $('settingsSave').addEventListener('click', async ()=>{
@@ -1660,6 +1660,24 @@ $('settingsSave').addEventListener('click', async ()=>{
     alert('拠点コードを入力してください');
     return;
   }
+  localSet('site_code', siteCode);
+  appSettings.siteCode = siteCode;
+
+  if(settingsMode === 'select'){
+    if(!editingGroup.id){
+      alert('グループをタップして選んでから保存してください');
+      return;
+    }
+    deviceGroupId = editingGroup.id;
+    localSet('device_group_id', deviceGroupId);
+    renderDeviceGroupBadge();
+    $('settingsOverlay').classList.remove('show');
+    await loadRoster();
+    await loadOrders();
+    return;
+  }
+
+  // settingsMode === 'create' (also used for editing an existing group via the 編集 link)
   syncRangesFromDom();
   editingGroup.name = $('deviceGroupNameInput').value.trim();
   editingGroup.folder = $('deviceGroupFolderInput').value.trim();
@@ -1683,15 +1701,12 @@ $('settingsSave').addEventListener('click', async ()=>{
         id:r.id, name:r.name, folder:r.folder, ranges:r.ranges,
         expected_productivity: r.expected_productivity, expected_break_minutes: r.expected_break_minutes
       }));
-      renderOtherGroups();
-      alert(`同じ名前・フォルダの作業グループ「${dup.name}」がすでに登録されています。新規作成せず、下の「拠点内の他の作業グループ」からタップして選び直してください。`);
+      alert(`同じ名前・フォルダの作業グループ「${dup.name}」がすでに登録されています。新規作成せず、「グループを選ぶ」タブからタップして選び直してください。`);
+      switchSettingsTab('select');
       return;
     }
     editingGroup.id = 'g' + Date.now();
   }
-
-  localSet('site_code', siteCode);
-  appSettings.siteCode = siteCode;
 
   await sbUpsert('work_groups', [{
     id: editingGroup.id, site_code: siteCode, name: editingGroup.name,
