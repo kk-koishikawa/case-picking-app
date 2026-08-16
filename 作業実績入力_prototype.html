@@ -303,6 +303,8 @@ table.log th{
 }
 table.log td{padding:8px;border-bottom:1px solid var(--line);}
 table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
+.log-del-btn{background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
+.log-del-btn:active{background:#FBEAE8;}
 .close-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
 .export-btn{background:var(--steel);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;}
 
@@ -520,7 +522,7 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <table class="log">
         <thead><tr>
           <th>担№</th><th>氏名</th><th>グループ</th><th>コース</th><th>店№</th><th>個口数</th>
-          <th>開始</th><th>終了</th><th>作業時間</th><th>生産性/h</th>
+          <th>開始</th><th>終了</th><th>作業時間</th><th>生産性/h</th><th></th>
         </tr></thead>
         <tbody id="logBody"></tbody>
       </table>
@@ -672,7 +674,7 @@ async function refreshFromServer(){
     `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${todayStart}&start_at=lte.${todayEnd}&order=start_at.desc`);
   if(logRows){
     todayLog = logRows.map(r=>({
-      no: r.worker_no, name: r.worker_name, groupId: r.group_id, groupName: r.group_name,
+      id: r.id, no: r.worker_no, name: r.worker_name, groupId: r.group_id, groupName: r.group_name,
       courseNo: r.course_no, courseName: r.course_name, storeNo: r.store_no, count: r.count,
       startISO: r.start_at, endISO: r.end_at, durationSec: r.duration_sec,
       productivity: r.productivity, cancelled: r.cancelled
@@ -1282,7 +1284,7 @@ $('progressClose').addEventListener('click', ()=> $('progressOverlay').classList
 function renderLogTable(){
   const body = $('logBody');
   if(todayLog.length===0){
-    body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">本日の記録はまだありません</td></tr>';
+    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">本日の記録はまだありません</td></tr>';
     return;
   }
   const sorted = [...todayLog].sort((a,b)=> new Date(b.startISO)-new Date(a.startISO));
@@ -1292,7 +1294,22 @@ function renderLogTable(){
       <td>${r.storeNo}</td><td>${r.count}</td>
       <td>${fmtTimeShort(r.startISO)}</td><td>${fmtTimeShort(r.endISO)}</td>
       <td>${fmtDuration(r.durationSec)}</td><td>${r.cancelled ? '取消' : r.productivity}</td>
+      <td><button class="log-del-btn" data-id="${r.id}">削除</button></td>
     </tr>`).join('');
+  body.querySelectorAll('.log-del-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-id');
+      const row = todayLog.find(r=>String(r.id)===id);
+      if(!row) return;
+      showConfirm(`${row.name}さん(担№${row.no}) ${row.courseName}/店${row.storeNo}・${row.count}個口 の記録を削除します。テスト入力の削除用です。よろしいですか？`, async ()=>{
+        await sbDelete('work_log', `id=eq.${id}`);
+        todayLog = todayLog.filter(r=>String(r.id)!==id);
+        renderLogTable();
+        renderSummary();
+        if($('progressOverlay').classList.contains('show')) renderProgress();
+      });
+    });
+  });
 }
 $('exportBtn').addEventListener('click', ()=>{
   const header = ['担当者№','氏名','作業グループ','コース','店№','個口数','開始','終了','作業時間(秒)','生産性/h','取消'];
@@ -1628,6 +1645,7 @@ $('lastRunFileInput').addEventListener('change', async (e)=>{
       return;
     }
     $('siteCodeInput').value = data.center_name;
+    $('deviceGroupFolderInput').value = data.category_name;
     const matches = (appSettings.groups || []).filter(g => g.folder === data.category_name);
 
     if(matches.length >= 1){
