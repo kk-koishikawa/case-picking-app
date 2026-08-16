@@ -136,6 +136,26 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
 .cs-box .cs-val.placeholder{color:#525C68;font-size:22px;}
 .cs-sep{font-family:'Space Mono',monospace;font-size:28px;color:#525C68;margin-top:14px;}
 
+.pick-store-view{display:flex;flex-direction:column;flex:1;min-height:0;}
+.pick-toggle{display:flex;gap:8px;margin-bottom:10px;}
+.pick-toggle-btn{
+  flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);background:#F7F5F0;
+  font-family:'IBM Plex Sans JP';font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;
+}
+.pick-toggle-btn.active{background:var(--ink);border-color:var(--ink);color:var(--amber);}
+.pick-store-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px;}
+.pick-store-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer;
+}
+.pick-store-item:active{background:#F0EDE6;}
+.pick-store-item .psi-code{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;}
+.pick-store-item .psi-lots{font-size:12px;color:var(--muted);}
+.pick-manual-link{
+  text-align:center;font-size:13px;color:var(--steel);font-weight:600;cursor:pointer;
+  padding:10px 0 2px;flex-shrink:0;
+}
+
 .locked-grid{
   display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;
 }
@@ -319,8 +339,18 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
           <div class="display-sub" id="displaySub"></div>
           <div class="display-error" id="displayError"></div>
         </div>
+        <div class="pick-manual-link" id="pickListLink" style="display:none;margin-bottom:12px;">→ 一覧から選ぶ</div>
 
         <div class="locked-grid" id="lockedGrid" style="display:none;"></div>
+
+        <div class="pick-store-view" id="pickStoreView" style="display:none;">
+          <div class="pick-toggle">
+            <button class="pick-toggle-btn active" id="pickModeSeqBtn">作業順</button>
+            <button class="pick-toggle-btn" id="pickModeCaseBtn">ケース順</button>
+          </div>
+          <div class="pick-store-list" id="pickStoreList"></div>
+          <div class="pick-manual-link" id="pickManualLink">→ コース№・店№を直接入力する</div>
+        </div>
 
         <div class="group-select-grid" id="groupSelectGrid" style="display:none;"></div>
 
@@ -370,11 +400,11 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
     <div class="locked-item" style="margin-bottom:14px;">
       <div class="lbl">拠点コード / カテゴリ(フォルダ名)</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-        <input type="text" id="siteCodeInput" placeholder="拠点コード 例: NAG" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
-        <input type="text" id="deviceGroupFolderInput" placeholder="フォルダ名 例: 加食" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
-        <button class="mini-btn" id="loadLastRunBtn" style="white-space:nowrap;">last_run.jsonを読込</button>
-        <input type="file" id="lastRunFileInput" accept=".json" style="display:none;">
+        <input type="text" id="siteCodeInput" placeholder="拠点コード 例: NAG" style="flex:1;min-width:0;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
+        <input type="text" id="deviceGroupFolderInput" placeholder="フォルダ名 例: 加食" style="flex:1;min-width:0;padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:16px;">
       </div>
+      <button class="mini-btn" id="loadLastRunBtn" style="width:100%;margin-top:8px;">last_run.jsonを読込</button>
+      <input type="file" id="lastRunFileInput" accept=".json" style="display:none;">
       <div style="font-size:12px;color:var(--muted);margin-top:6px;">拠点導入時に一度だけ設定してください。last_run.jsonを読み込むと、この2つを自動入力します(手入力もできます)。</div>
       <div id="lastRunHint" style="font-size:12px;color:var(--steel);margin-top:6px;"></div>
       <div id="lastRunChooser" style="display:flex;flex-direction:column;gap:6px;margin-top:8px;"></div>
@@ -823,6 +853,8 @@ function resetToWorker(){
   $('closingActions').style.display = 'none';
   $('groupSelectGrid').style.display = 'none';
   $('groupSelectGrid').innerHTML = '';
+  $('pickStoreView').style.display = 'none';
+  $('pickListLink').style.display = 'none';
   $('keypad').style.display = 'grid';
   $('csRow').style.display = 'none';
   $('displayValue').style.display = 'block';
@@ -872,7 +904,80 @@ function handleWorkerEnter(){
     return;
   }
   ctx.groupId = g.id; ctx.groupName = g.name;
+
+  // if today's order data is loaded for this group, offer the tap-to-pick list first;
+  // otherwise fall back to manual course/store keypad entry
+  const orderMap = currentGroupOrderMap();
+  if(orderMap && Object.keys(orderMap).length){
+    return showPickStore();
+  }
   return goToCourseStore();
+}
+
+// ---------- tap-to-pick course/store (from today's order data) ----------
+let pickMode = 'seq'; // 'seq' (作業順) | 'case' (ケース順)
+
+function showPickStore(){
+  step = 'pickStore';
+  $('stepEyebrow').textContent = `STEP 2 ・ ${escapeHtml(ctx.name)} さん${ctx.groupName ? ' ・ '+escapeHtml(ctx.groupName) : ''}`;
+  $('stepTitle').textContent = 'コース・店を選んでください';
+  $('displaySub').textContent = '';
+  $('displayValue').style.display = 'none';
+  $('keypad').style.display = 'none';
+  $('pickStoreView').style.display = 'flex';
+  renderPickStoreList();
+}
+function renderPickStoreList(){
+  const orderMap = currentGroupOrderMap() || {};
+  let entries = Object.values(orderMap);
+  if(pickMode === 'seq'){
+    entries = entries.slice().sort((a,b)=> (a.seq||0) - (b.seq||0));
+  } else {
+    entries = entries.slice().sort((a,b)=> a.courseNo - b.courseNo || a.storeNo - b.storeNo);
+  }
+  $('pickModeSeqBtn').classList.toggle('active', pickMode === 'seq');
+  $('pickModeCaseBtn').classList.toggle('active', pickMode === 'case');
+  const list = $('pickStoreList');
+  if(entries.length === 0){
+    list.innerHTML = '<div class="working-empty">本日の受注データがありません</div>';
+    return;
+  }
+  list.innerHTML = entries.map(e => `
+    <div class="pick-store-item" data-course="${e.courseNo}" data-store="${e.storeNo}">
+      <div class="psi-code">${e.courseNo} － ${e.storeNo}</div>
+      <div class="psi-lots">${e.lots}個口予定</div>
+    </div>`).join('');
+  list.querySelectorAll('.pick-store-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectPickedStore(parseInt(el.getAttribute('data-course'),10), parseInt(el.getAttribute('data-store'),10));
+    });
+  });
+}
+$('pickModeSeqBtn').addEventListener('click', ()=>{ pickMode='seq'; renderPickStoreList(); });
+$('pickModeCaseBtn').addEventListener('click', ()=>{ pickMode='case'; renderPickStoreList(); });
+$('pickManualLink').addEventListener('click', ()=>{
+  $('pickStoreView').style.display = 'none';
+  goToCourseStore();
+  $('pickListLink').style.display = 'block';
+});
+$('pickListLink').addEventListener('click', ()=>{
+  showPickStore();
+});
+function selectPickedStore(courseNo, storeNo){
+  const orderMap = currentGroupOrderMap() || {};
+  const rec = orderMap[courseNo + '-' + storeNo];
+  ctx.courseNo = courseNo;
+  ctx.courseName = `コース${courseNo}`;
+  ctx.storeNo = storeNo;
+  step = 'count';
+  buffer = rec ? String(rec.lots) : '';
+  $('pickStoreView').style.display = 'none';
+  $('displayValue').style.display = 'block';
+  $('keypad').style.display = 'grid';
+  $('stepEyebrow').textContent = 'STEP 3';
+  $('stepTitle').textContent = '個口数を確認してください';
+  $('displaySub').textContent = `コース${courseNo} / 店${storeNo} ｜ 受注データより自動入力(修正可)`;
+  renderDisplay();
 }
 
 function goToCourseStore(){
@@ -884,6 +989,8 @@ function goToCourseStore(){
   $('displayValue').style.display = 'none';
   $('keypad').style.display = 'grid';
   $('csRow').style.display = 'flex';
+  const orderMap = currentGroupOrderMap();
+  $('pickListLink').style.display = (orderMap && Object.keys(orderMap).length) ? 'block' : 'none';
   renderCsBoxes();
 }
 
@@ -1404,7 +1511,7 @@ async function loadOrders(){
       if(!gd) return;
       gd.loaded = true;
       gd.updatedAt = r.updated_at;
-      gd.map[r.course_no + '-' + r.store_no] = {courseNo: r.course_no, storeNo: r.store_no, lots: r.lots};
+      gd.map[r.course_no + '-' + r.store_no] = {courseNo: r.course_no, storeNo: r.store_no, lots: r.lots, seq: r.seq||0};
     });
   }
   const loadedCount = Object.values(ORDER_DATA).filter(d=>d.loaded).length;
@@ -1432,7 +1539,7 @@ function parsePkRows(text){
 function aggregateForGroup(rows, ranges){
   const map = {};
   let inRange = 0, outOfRange = 0, badRows = 0;
-  rows.forEach(r=>{
+  rows.forEach((r, idx)=>{
     if(!r || r.length < 12) { badRows++; return; }
     const courseNo = parseInt(r[6], 10);
     const storeNo = parseInt(r[7], 10);
@@ -1446,7 +1553,8 @@ function aggregateForGroup(rows, ranges){
     inRange++;
     const lots = bara / lotSize;
     const key = courseNo + '-' + storeNo;
-    if(!map[key]) map[key] = {courseNo, storeNo, lots: 0};
+    // first time this course/store stop appears in the file = its position in the work order
+    if(!map[key]) map[key] = {courseNo, storeNo, lots: 0, seq: idx};
     map[key].lots += lots;
   });
   Object.values(map).forEach(v=> v.lots = Math.round(v.lots));
@@ -1515,7 +1623,7 @@ $('orderApply').addEventListener('click', async ()=>{
       `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${workDate}&group_id=eq.${encodeURIComponent(gid)}`);
     const rows = Object.values(pendingOrderImport[gid]).map(v => ({
       site_code: siteCode, work_date: workDate, group_id: gid,
-      course_no: v.courseNo, store_no: v.storeNo, lots: v.lots, updated_at: updatedAt
+      course_no: v.courseNo, store_no: v.storeNo, lots: v.lots, seq: v.seq||0, updated_at: updatedAt
     }));
     if(rows.length) await sbInsert('orders', rows);
     ORDER_DATA[gid] = {map: pendingOrderImport[gid], loaded: true, updatedAt};
