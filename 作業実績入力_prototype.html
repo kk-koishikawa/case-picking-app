@@ -339,18 +339,14 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
     <div class="header-right">
       <div class="conn" id="connBadge"><span class="dot"></span><span id="connText">同期OK</span></div>
       <div class="clock" id="clock">--:--:--</div>
-      <button class="hbtn" id="rosterBtn">名簿更新</button>
-      <span class="conn" id="rosterStatus" style="min-width:120px;"><span class="dot" style="background:var(--steel);"></span><span id="rosterStatusText">名簿:読込中…</span></span>
-      <input type="file" id="rosterFileInput" accept=".csv" style="display:none;">
-      <button class="hbtn" id="courseMasterBtn">コース表更新</button>
-      <span class="conn" id="courseMasterStatus" style="min-width:120px;"><span class="dot" style="background:var(--muted);"></span><span id="courseMasterStatusText">コース表:未設定</span></span>
-      <input type="file" id="courseMasterFileInput" accept=".xlsx" style="display:none;">
       <button class="hbtn" id="orderImportBtn">受注データ取得</button>
       <span class="conn" id="orderStatus" style="min-width:140px;"><span class="dot" style="background:var(--muted);"></span><span id="orderStatusText">受注:未取込</span></span>
       <input type="file" id="orderFileInput" accept=".csv" style="display:none;">
-      <button class="hbtn" id="settingsBtn">⚙ 設定</button>
       <button class="hbtn" id="progressBtn">📊 進捗</button>
       <button class="hbtn" id="adminBtn">本日の実績</button>
+      <button class="hbtn" id="settingsBtn">⚙ 設定</button>
+      <input type="file" id="rosterFileInput" accept=".csv" style="display:none;">
+      <input type="file" id="courseMasterFileInput" accept=".xlsx" style="display:none;">
     </div>
   </header>
   <main>
@@ -443,6 +439,18 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <input type="file" id="lastRunFileInput" accept=".json" style="display:none;">
       <div style="font-size:12px;color:var(--muted);margin-top:6px;">拠点導入時に一度だけ設定してください。last_run.jsonを読み込むと、この2つを自動入力します(手入力もできます)。</div>
       <div id="lastRunHint" style="font-size:12px;color:var(--steel);margin-top:6px;"></div>
+    </div>
+
+    <div class="lbl" style="margin-bottom:8px;">拠点データの管理(たまに更新するもの)</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="mini-btn" id="rosterBtn">名簿更新</button>
+        <span id="rosterStatusText" style="font-size:12px;color:var(--muted);">名簿:読込中…</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="mini-btn" id="courseMasterBtn">コース表更新</button>
+        <span id="courseMasterStatusText" style="font-size:12px;color:var(--muted);">コース表:未設定</span>
+      </div>
     </div>
 
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;"></div>
@@ -1524,7 +1532,7 @@ let pendingRosterImport = null;
 
 function setRosterStatus(text, color){
   $('rosterStatusText').textContent = text;
-  $('rosterStatus').querySelector('.dot').style.background = color || 'var(--steel)';
+  $('rosterStatusText').style.color = color || 'var(--muted)';
 }
 
 async function loadRoster(){
@@ -2011,7 +2019,7 @@ let validCourseSet = new Set(); // 今日の曜日で有効なコース№の集
 
 function setCourseMasterStatus(text, color){
   $('courseMasterStatusText').textContent = text;
-  $('courseMasterStatus').querySelector('.dot').style.background = color || 'var(--muted)';
+  $('courseMasterStatusText').style.color = color || 'var(--muted)';
 }
 async function loadCourseMaster(){
   courseSeqMap = {}; courseBinMap = {}; validCourseSet = new Set();
