@@ -81,10 +81,30 @@ td.group-sep{border-left:2px solid var(--paper);}
 td.total-col{background:#FCF7EC;}
 
 .empty-msg{padding:60px 20px;text-align:center;color:var(--muted);}
+
+.print-only{display:none;}
+
+@media print{
+  @page{ size: landscape; margin: 12mm; }
+  body{ background:#fff; }
+  #appHeader, .controls, .sort-row{ display:none !important; }
+  .print-only{
+    display:block; margin:0 0 14px; font-family:'IBM Plex Sans JP';
+  }
+  .print-only h2{ margin:0 0 4px; font-size:20px; }
+  .print-only .meta{ font-size:13px; color:#444; }
+  main{ padding:0; max-width:none; }
+  .summary-bar{ margin-bottom:12px; }
+  .summary-stat{ border:1px solid #ccc; }
+  .table-wrap{ border:none; overflow:visible; }
+  table{ min-width:0; width:100%; }
+  thead{ display:table-header-group; }
+  tbody tr{ break-inside:avoid; }
+}
 </style>
 </head>
 <body>
-<header>
+<header id="appHeader">
   <div class="brand"><span class="mark">WMS</span><h1>個人別集計</h1></div>
   <div class="controls">
     <div>
@@ -99,8 +119,14 @@ td.total-col{background:#FCF7EC;}
       <label>日付</label><br>
       <input type="date" id="dateInput">
     </div>
+    <div>
+      <label>&nbsp;</label><br>
+      <button id="printBtn" style="padding:8px 14px;border-radius:6px;border:1px solid var(--amber);background:var(--amber);color:var(--ink);font-weight:700;font-family:inherit;font-size:13px;cursor:pointer;">🖨 印刷</button>
+    </div>
   </div>
 </header>
+
+<div id="printHeading" class="print-only"></div>
 
 <main>
   <div class="summary-bar" id="summaryBar"></div>
@@ -270,7 +296,21 @@ async function render(){
   sortPeople(people);
   renderSummary(people);
   renderTable(people);
+  updatePrintHeading();
 }
+
+function updatePrintHeading(){
+  const siteCode = $('siteSelect').value;
+  const groupSel = $('groupSelect');
+  const groupName = groupSel.options[groupSel.selectedIndex] ? groupSel.options[groupSel.selectedIndex].textContent : '';
+  const dateStr = $('dateInput').value;
+  const wd = dateStr ? weekdayJaOf(dateStr) : '';
+  $('printHeading').innerHTML = `
+    <h2>個人別集計 ｜ ${esc(siteCode)} ・ ${esc(groupName)}</h2>
+    <div class="meta">${esc(dateStr)}（${wd}）</div>
+  `;
+}
+$('printBtn').addEventListener('click', ()=> window.print());
 
 function sortPeople(people){
   const keyMap = { productivity:'productivity', count:'count', stores:'stores', minutes:'minutes' };
