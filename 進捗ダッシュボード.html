@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>進捗ダッシュボード</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap');
+
+:root{
+  --ink:#1B2430;
+  --paper:#F1EFE9;
+  --panel:#FFFFFF;
+  --line:#DCD7CC;
+  --amber:#F2A93B;
+  --amber-deep:#C9821A;
+  --steel:#3E6B8A;
+  --green:#2F8F5B;
+  --red:#C6473C;
+  --muted:#6B7280;
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--paper);
+  background-image:linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:28px 28px;
+  color:var(--ink);
+  font-family:'IBM Plex Sans JP', -apple-system, 'Hiragino Sans', sans-serif;
+}
+header{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  padding:16px 24px;background:var(--ink);color:#fff;
+}
+.brand{display:flex;align-items:baseline;gap:10px;}
+.brand .mark{font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.18em;background:var(--amber);color:var(--ink);padding:3px 8px;border-radius:4px;}
+.brand h1{font-size:19px;font-weight:600;margin:0;}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.controls label{font-size:12px;color:#B9C2CE;}
+.controls select{padding:8px 10px;border-radius:6px;border:1px solid #46505E;background:#232D3B;color:#fff;font-family:'Space Mono',monospace;font-size:13px;}
+.controls select option{color:#000;}
+.clock{font-family:'Space Mono',monospace;font-size:15px;color:var(--amber);}
+.updated{font-size:11px;color:#9AA5B1;}
+
+main{padding:22px;max-width:1300px;margin:0 auto;}
+
+.group-section{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px;margin-bottom:22px;
+}
+.group-section h2{font-size:18px;margin:0 0 14px;}
+.progress-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-bottom:20px;}
+.bin-card{background:#F7F5F0;border:1px solid var(--line);border-radius:10px;padding:16px;}
+.bin-card h3{margin:0 0 10px;font-size:16px;}
+.bin-progress-bar{height:9px;background:#EEEAE1;border-radius:5px;overflow:hidden;margin-bottom:12px;}
+.bin-progress-fill{height:100%;background:var(--amber);transition:width .3s;}
+.bin-stats{display:flex;gap:8px;}
+.bin-stat{flex:1;text-align:center;background:#fff;border-radius:8px;padding:8px 4px;}
+.bin-stat .n{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;}
+.bin-stat .l{font-size:10px;color:var(--muted);margin-top:2px;}
+
+.sub-block{margin-bottom:18px;}
+.sub-block:last-child{margin-bottom:0;}
+.sub-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sub-head h4{font-size:13px;margin:0;color:var(--steel);font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.sub-count{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--amber-deep);}
+
+.working-list{display:flex;flex-direction:column;gap:6px;}
+.wk-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;background:#F7F5F0;}
+.wk-avatar{
+  width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--amber);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;
+  font-family:'Space Mono',monospace;
+}
+.wk-info{flex:1;min-width:0;}
+.wk-name{font-size:13px;font-weight:600;}
+.wk-meta{font-size:11px;color:var(--muted);margin-top:1px;}
+.wk-timer{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--steel);flex-shrink:0;}
+.working-empty{padding:14px;text-align:center;color:var(--muted);font-size:12px;background:#F7F5F0;border-radius:8px;}
+
+table.perf{width:100%;border-collapse:collapse;font-size:13px;}
+table.perf th{text-align:right;font-size:11px;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:2px solid var(--ink);}
+table.perf th.name-col{text-align:left;}
+table.perf td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;}
+table.perf td.name-col{text-align:left;font-family:'IBM Plex Sans JP';font-weight:600;}
+table.perf tr:first-child td{color:var(--amber-deep);}
+
+.empty-msg{padding:20px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark">WMS</span><h1>進捗ダッシュボード</h1></div>
+  <div class="controls">
+    <div>
+      <label>拠点コード</label><br>
+      <select id="siteSelect"></select>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="updated" id="updatedText"></div>
+  </div>
+</header>
+
+<main>
+  <div id="groupSections"></div>
+</main>
+
+<script>
+const SUPABASE_URL = 'https://pakdabwtszvlzzflfeci.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_VkfxCOHClg-MxPgLvVSCww_VEGJX5fY';
+const SB_HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+const $ = id => document.getElementById(id);
+
+async function sbSelect(table, query=''){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {headers: SB_HEADERS});
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ console.error(e); return null; }
+}
+function localGet(key){ try{ const v = localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function localSet(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){} }
+
+function todayKey(){
+  const d = new Date();
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function fmtTimeShort(iso){
+  const d = new Date(iso);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDuration(sec){
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const pad = n=>String(n).padStart(2,'0');
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const WEEKDAY_JA = ['日','月','火','水','木','金','土'];
+function todayWeekdayJa(){ return WEEKDAY_JA[new Date().getDay()]; }
+
+// ---------- bin math (mirrors the main kiosk app) ----------
+function detectBins(courseNumbers){
+  const uniq = [...new Set(courseNumbers)].sort((a,b)=>a-b);
+  if(uniq.length <= 1) return [{label:'全体', min:uniq[0]||0, max:uniq[0]||0}];
+  const gaps = [];
+  for(let i=1;i<uniq.length;i++) gaps.push({idx:i, gap:uniq[i]-uniq[i-1]});
+  const maxGapEntry = gaps.reduce((a,b)=> b.gap>a.gap?b:a, gaps[0]);
+  const avgGap = gaps.reduce((s,g)=>s+g.gap,0)/gaps.length;
+  if(maxGapEntry.gap > avgGap*3 && maxGapEntry.gap > 5){
+    const splitIdx = maxGapEntry.idx;
+    return [
+      {label:'1便', min:uniq[0], max:uniq[splitIdx-1]},
+      {label:'2便', min:uniq[splitIdx], max:uniq[uniq.length-1]}
+    ];
+  }
+  return [{label:'全体', min:uniq[0], max:uniq[uniq.length-1]}];
+}
+function detectBinsFromCourseTable(courseNumbers, courseBinMap){
+  const uniq = [...new Set(courseNumbers)];
+  if(uniq.length === 0) return null;
+  if(uniq.some(c => courseBinMap[c] === undefined)) return null;
+  const byBin = {};
+  uniq.forEach(c=>{
+    const b = courseBinMap[c];
+    if(!byBin[b]) byBin[b] = new Set();
+    byBin[b].add(c);
+  });
+  return Object.keys(byBin).map(Number).sort((a,b)=>a-b).map(b => ({label: b+'便', courseSet: byBin[b]}));
+}
+function computeBinData(bin, planEntries, doneEntries, openSessions, now){
+  const inBin = e => bin.courseSet ? bin.courseSet.has(e.courseNo) : (e.courseNo >= bin.min && e.courseNo <= bin.max);
+  const plan = planEntries.filter(inBin);
+  const done = doneEntries.filter(inBin);
+  const openInBin = openSessions.filter(inBin);
+
+  const volumeTotal = plan.reduce((s,e)=>s+e.lots, 0);
+  const doneKeys = new Set(done.map(e => e.courseNo+'-'+e.storeNo));
+  const volumeDone = done.reduce((s,e)=>s+e.count, 0);
+
+  const courseNos = [...new Set(plan.map(e=>e.courseNo))];
+  let courseDone = 0;
+  courseNos.forEach(c=>{
+    const stores = plan.filter(e=>e.courseNo===c).map(e=>e.storeNo);
+    if(stores.length && stores.every(s => doneKeys.has(c+'-'+s))) courseDone++;
+  });
+
+  const startTimes = [...done.map(e=>new Date(e.startISO).getTime()), ...openInBin.map(e=>new Date(e.startISO).getTime())];
+  const started = startTimes.length > 0;
+  const binStart = started ? new Date(Math.min(...startTimes)) : null;
+
+  return {label: bin.label, courseDone, courseTotal: courseNos.length, volumeTotal, volumeDone,
+          remaining: volumeTotal - volumeDone, started, binStart, done};
+}
+function currentProductivityFor(data, expectedProd, now){
+  if(!data.started) return expectedProd;
+  const windowStart = new Date(Math.max(data.binStart.getTime(), now.getTime() - 45*60000));
+  const windowDone = data.done.filter(e => new Date(e.endISO).getTime() >= windowStart.getTime());
+  const vol = windowDone.reduce((s,e)=>s+e.count, 0);
+  const elapsedH = Math.max((now.getTime() - windowStart.getTime())/3600000, 1/3600);
+  return vol > 0 ? vol/elapsedH : expectedProd;
+}
+function computeEndTime(data, currentProd, prevBinEnd, expectedProd, expectedBreak, now){
+  if(data.volumeTotal > 0 && data.remaining <= 0){
+    const endTimes = data.done.map(e=>new Date(e.endISO).getTime());
+    return {time: new Date(Math.max(...endTimes)), actual:true};
+  }
+  if(data.started){
+    const hoursLeft = currentProd > 0 ? data.remaining/currentProd : 0;
+    return {time: new Date(now.getTime() + hoursLeft*3600000), actual:false};
+  }
+  if(prevBinEnd){
+    const assumedStart = new Date(prevBinEnd.getTime() + expectedBreak*60000);
+    const hoursLeft = expectedProd > 0 ? data.volumeTotal/expectedProd : 0;
+    return {time: new Date(assumedStart.getTime() + hoursLeft*3600000), actual:false};
+  }
+  return null;
+}
+function renderBinCards(results){
+  return `<div class="progress-grid">` + results.map(r=>{
+    const cPct = r.courseTotal ? Math.round(r.courseDone/r.courseTotal*100) : 0;
+    const vPct = r.volumeTotal ? Math.round(r.volumeDone/r.volumeTotal*100) : 0;
+    const endLabel = r.endResult ? (fmtTimeShort(r.endResult.time.toISOString()) + (r.endResult.actual?'(実績)':'')) : '--:--';
+    return `
+    <div class="bin-card">
+      <h3>${esc(r.label)}</h3>
+      <div class="bin-progress-bar"><div class="bin-progress-fill" style="width:${vPct}%"></div></div>
+      <div class="bin-stats">
+        <div class="bin-stat"><div class="n">${r.courseDone}/${r.courseTotal}</div><div class="l">コース進捗(${cPct}%)</div></div>
+        <div class="bin-stat"><div class="n">${Math.round(r.volumeDone)}/${Math.round(r.volumeTotal)}</div><div class="l">物量進捗(${vPct}%)</div></div>
+        <div class="bin-stat"><div class="n">${endLabel}</div><div class="l">終了予測</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;">${r.started ? `開始 ${fmtTimeShort(r.binStart.toISOString())} ・ 現在の生産性 約${Math.round(r.prod)}個/人時` : '未開始(想定生産性で予測)'}</div>
+    </div>`;
+  }).join('') + `</div>`;
+}
+
+// ---------- data loading ----------
+async function loadSiteOptions(){
+  const rows = await sbSelect('work_groups', 'select=site_code');
+  const sites = [...new Set((rows||[]).map(r=>r.site_code))].sort();
+  const sel = $('siteSelect');
+  sel.innerHTML = sites.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const saved = localGet('dash_site_code');
+  if(saved && sites.includes(saved)) sel.value = saved;
+  else if(sites.length) sel.value = sites[0];
+}
+
+async function refresh(){
+  const siteCode = $('siteSelect').value;
+  if(!siteCode) return;
+  localSet('dash_site_code', siteCode);
+
+  const wd = todayWeekdayJa();
+  const dateKey = todayKey();
+  const dayStart = dateKey + 'T00:00:00';
+  const dayEnd = dateKey + 'T23:59:59.999';
+
+  const [groups, courseRows, orderRows, logRows, sessionRows] = await Promise.all([
+    sbSelect('work_groups', `site_code=eq.${encodeURIComponent(siteCode)}&order=name.asc`),
+    sbSelect('course_master', `site_code=eq.${encodeURIComponent(siteCode)}&weekday=eq.${encodeURIComponent(wd)}`),
+    sbSelect('orders', `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${dateKey}`),
+    sbSelect('work_log', `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&cancelled=eq.false`),
+    sbSelect('active_sessions', `site_code=eq.${encodeURIComponent(siteCode)}`)
+  ]);
+
+  const courseBinMap = {};
+  (courseRows||[]).forEach(r=> courseBinMap[r.course_no] = r.bin);
+
+  const sessions = (sessionRows||[]).map(r=>({
+    no: r.worker_no, name: r.worker_name, groupId: r.group_id, groupName: r.group_name,
+    courseNo: r.course_no, courseName: r.course_name, storeNo: r.store_no, count: r.count, startISO: r.start_at
+  }));
+
+  const logs = (logRows||[]).map(r=>({
+    no: r.worker_no, name: r.worker_name, groupId: r.group_id, courseNo: r.course_no, storeNo: r.store_no,
+    count: r.count, startISO: r.start_at, endISO: r.end_at
+  }));
+
+  const ordersByGroup = {};
+  (orderRows||[]).forEach(r=>{
+    if(!ordersByGroup[r.group_id]) ordersByGroup[r.group_id] = [];
+    ordersByGroup[r.group_id].push({courseNo: r.course_no, storeNo: r.store_no, lots: r.lots});
+  });
+
+  const now = new Date();
+  const sectionsHtml = (groups||[]).map(g=>{
+    const planEntries = ordersByGroup[g.id] || [];
+    const doneEntries = logs.filter(l => l.groupId === g.id);
+    const openInGroup = sessions.filter(s => s.groupId === g.id);
+
+    let progressHtml = '<div class="empty-msg">本日の受注データが未取込です。</div>';
+    if(planEntries.length > 0){
+      const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo), courseBinMap) || detectBins(planEntries.map(e=>e.courseNo));
+      let prevEnd = null;
+      const results = bins.map(bin=>{
+        const data = computeBinData(bin, planEntries, doneEntries, openInGroup, now);
+        const prod = currentProductivityFor(data, g.expected_productivity||300, now);
+        const endResult = computeEndTime(data, prod, prevEnd, g.expected_productivity||300, g.expected_break_minutes||60, now);
+        prevEnd = endResult ? endResult.time : prevEnd;
+        return {...data, prod, endResult};
+      });
+      progressHtml = renderBinCards(results);
+    }
+
+    const workersHtml = renderGroupWorkers(openInGroup);
+    const perfHtml = renderGroupPerformance(doneEntries);
+
+    return `<div class="group-section">
+      <h2>${esc(g.name)}</h2>
+      <div class="sub-block">${progressHtml}</div>
+      <div class="sub-block">
+        <div class="sub-head"><h4>現在の作業者</h4><div class="sub-count">${openInGroup.length}人</div></div>
+        ${workersHtml}
+      </div>
+      <div class="sub-block">
+        <div class="sub-head"><h4>本日の個人成績</h4></div>
+        ${perfHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  $('groupSections').innerHTML = sectionsHtml || '<div class="empty-msg">この拠点にはまだ作業グループがありません。</div>';
+  $('updatedText').textContent = '最終更新: ' + fmtTimeShort(now.toISOString());
+}
+
+function renderGroupWorkers(openInGroup){
+  if(openInGroup.length === 0) return '<div class="working-empty">現在作業中の担当者はいません</div>';
+  const sorted = [...openInGroup].sort((a,b)=> new Date(a.startISO)-new Date(b.startISO));
+  return `<div class="working-list">` + sorted.map(s=>{
+    const elapsed = (Date.now() - new Date(s.startISO).getTime())/1000;
+    return `<div class="wk-row">
+      <div class="wk-avatar">${s.no}</div>
+      <div class="wk-info">
+        <div class="wk-name">${esc(s.name)}</div>
+        <div class="wk-meta">${esc(s.courseName)} / 店${s.storeNo} ・ ${s.count}個口</div>
+      </div>
+      <div class="wk-timer" data-start="${s.startISO}">${fmtDuration(elapsed)}</div>
+    </div>`;
+  }).join('') + `</div>`;
+}
+
+function renderGroupPerformance(doneEntries){
+  if(doneEntries.length === 0) return '<div class="working-empty">本日の完了実績はまだありません</div>';
+  const byWorker = {};
+  doneEntries.forEach(l=>{
+    if(!byWorker[l.no]) byWorker[l.no] = {no:l.no, name:l.name, storeKeys:new Set(), count:0, seconds:0};
+    byWorker[l.no].storeKeys.add(l.courseNo+'-'+l.storeNo);
+    byWorker[l.no].count += l.count;
+    byWorker[l.no].seconds += Math.max(0, (new Date(l.endISO) - new Date(l.startISO))/1000);
+  });
+  const people = Object.values(byWorker).map(w=>{
+    const minutes = w.seconds/60;
+    const productivity = minutes>0 ? Math.round(w.count*60/minutes) : 0;
+    return { no:w.no, name:w.name, stores:w.storeKeys.size, count:w.count, productivity };
+  }).sort((a,b)=> b.productivity - a.productivity);
+
+  return `<table class="perf">
+    <thead><tr><th class="name-col">氏名</th><th>店舗数</th><th>数量</th><th>生産性/h</th></tr></thead>
+    <tbody>${people.map(p=>`
+      <tr><td class="name-col">${esc(p.name)} <span style="color:var(--muted);font-size:11px;">(№${p.no})</span></td><td>${p.stores}</td><td>${p.count}</td><td>${p.productivity}</td></tr>
+    `).join('')}</tbody>
+  </table>`;
+}
+
+function tickTimers(){
+  document.querySelectorAll('.wk-timer').forEach(el=>{
+    const start = new Date(el.getAttribute('data-start')).getTime();
+    el.textContent = fmtDuration((Date.now()-start)/1000);
+  });
+}
+function tickClock(){
+  const d = new Date();
+  const pad = n=>String(n).padStart(2,'0');
+  $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+$('siteSelect').addEventListener('change', refresh);
+
+(async function init(){
+  await loadSiteOptions();
+  await refresh();
+  tickClock();
+  setInterval(tickClock, 1000);
+  setInterval(tickTimers, 1000);
+  setInterval(refresh, 15000);
+})();
+</script>
+</body>
+</html>
