@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>個人別集計</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap');
+
+:root{
+  --ink:#1B2430;
+  --paper:#F1EFE9;
+  --panel:#FFFFFF;
+  --line:#DCD7CC;
+  --amber:#F2A93B;
+  --amber-deep:#C9821A;
+  --steel:#3E6B8A;
+  --green:#2F8F5B;
+  --red:#C6473C;
+  --muted:#6B7280;
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--paper);
+  background-image:linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:28px 28px;
+  color:var(--ink);
+  font-family:'IBM Plex Sans JP', -apple-system, 'Hiragino Sans', sans-serif;
+}
+header{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  padding:16px 24px;background:var(--ink);color:#fff;
+}
+.brand{display:flex;align-items:baseline;gap:10px;}
+.brand .mark{font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.18em;background:var(--amber);color:var(--ink);padding:3px 8px;border-radius:4px;}
+.brand h1{font-size:19px;font-weight:600;margin:0;}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.controls label{font-size:12px;color:#B9C2CE;}
+.controls select, .controls input{
+  padding:8px 10px;border-radius:6px;border:1px solid #46505E;background:#232D3B;color:#fff;
+  font-family:'Space Mono',monospace;font-size:13px;
+}
+.controls select option{color:#000;}
+
+main{padding:22px;max-width:1400px;margin:0 auto;}
+
+.summary-bar{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
+.summary-stat{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 18px;min-width:120px;
+}
+.summary-stat .n{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;}
+.summary-stat .l{font-size:11px;color:var(--muted);margin-top:2px;}
+
+.sort-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.sort-row .lbl{font-size:12px;color:var(--muted);font-weight:600;margin-right:4px;}
+.sort-btn{
+  background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 14px;font-size:13px;
+  font-family:'IBM Plex Sans JP';cursor:pointer;color:var(--muted);font-weight:600;
+}
+.sort-btn.active{background:var(--ink);border-color:var(--ink);color:var(--amber);}
+
+.table-wrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:auto;}
+table{border-collapse:collapse;width:100%;min-width:1100px;}
+thead tr.group-row th{
+  background:#F7F5F0;font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.06em;
+  color:var(--steel);text-align:center;padding:8px 6px;border-bottom:1px solid var(--line);border-left:2px solid var(--paper);
+}
+thead tr.col-row th{
+  font-size:11px;color:var(--muted);font-weight:600;padding:6px;border-bottom:2px solid var(--ink);
+  text-align:right;white-space:nowrap;
+}
+thead tr.col-row th.name-col{text-align:left;}
+tbody td{padding:8px 6px;text-align:right;font-family:'Space Mono',monospace;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap;}
+tbody td.name-col{text-align:left;font-family:'IBM Plex Sans JP';font-weight:600;font-size:13px;}
+tbody td.cat-col{text-align:left;font-family:'IBM Plex Sans JP';font-size:12px;color:var(--muted);}
+tbody tr:hover td{background:#FBF8F1;}
+tbody tr:nth-child(1) td.total-prod{color:var(--amber-deep);font-weight:700;}
+td.group-sep{border-left:2px solid var(--paper);}
+td.total-col{background:#FCF7EC;}
+
+.empty-msg{padding:60px 20px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="mark">WMS</span><h1>個人別集計</h1></div>
+  <div class="controls">
+    <div>
+      <label>拠点コード</label><br>
+      <select id="siteSelect"></select>
+    </div>
+    <div>
+      <label>作業グループ</label><br>
+      <select id="groupSelect"></select>
+    </div>
+    <div>
+      <label>日付</label><br>
+      <input type="date" id="dateInput">
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="summary-bar" id="summaryBar"></div>
+  <div class="sort-row" id="sortRow">
+    <span class="lbl">並び替え(合計):</span>
+    <button class="sort-btn" data-key="productivity">生産性</button>
+    <button class="sort-btn" data-key="count">数量</button>
+    <button class="sort-btn" data-key="stores">店舗数</button>
+    <button class="sort-btn" data-key="minutes">作業時間</button>
+  </div>
+  <div class="table-wrap">
+    <table id="resultTable">
+      <thead>
+        <tr class="group-row">
+          <th colspan="2"></th>
+          <th colspan="4">1便</th>
+          <th colspan="4">2便</th>
+          <th colspan="4">合計</th>
+        </tr>
+        <tr class="col-row">
+          <th class="name-col">氏名</th><th>区分</th>
+          <th>店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
+          <th class="group-sep">店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
+          <th class="group-sep">店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
+        </tr>
+      </thead>
+      <tbody id="resultBody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = 'https://pakdabwtszvlzzflfeci.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_VkfxCOHClg-MxPgLvVSCww_VEGJX5fY';
+const SB_HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+const $ = id => document.getElementById(id);
+
+async function sbSelect(table, query=''){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {headers: SB_HEADERS});
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(e){ console.error(e); return null; }
+}
+
+function localGet(key){ try{ const v = localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function localSet(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){} }
+
+function todayKey(){
+  const d = new Date();
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+const WEEKDAY_JA = ['日','月','火','水','木','金','土'];
+function weekdayJaOf(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return WEEKDAY_JA[new Date(y, m-1, d).getDay()];
+}
+
+let sortKey = 'productivity';
+
+async function loadSiteOptions(){
+  const rows = await sbSelect('work_groups', 'select=site_code');
+  const sites = [...new Set((rows||[]).map(r=>r.site_code))].sort();
+  const sel = $('siteSelect');
+  sel.innerHTML = sites.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const saved = localGet('report_site_code');
+  if(saved && sites.includes(saved)) sel.value = saved;
+  else if(sites.length) sel.value = sites[0];
+}
+
+async function loadGroupOptions(){
+  const siteCode = $('siteSelect').value;
+  const rows = await sbSelect('work_groups', `site_code=eq.${encodeURIComponent(siteCode)}&order=name.asc`);
+  const sel = $('groupSelect');
+  const groups = rows || [];
+  sel.innerHTML = `<option value="__all__">全グループ</option>` + groups.map(g=>`<option value="${g.id}">${g.name}</option>`).join('');
+  const saved = localGet('report_group_id_'+siteCode);
+  if(saved && [...sel.options].some(o=>o.value===saved)) sel.value = saved;
+}
+
+async function loadCourseBinMap(siteCode, dateStr){
+  const wd = weekdayJaOf(dateStr);
+  const rows = await sbSelect('course_master', `site_code=eq.${encodeURIComponent(siteCode)}&weekday=eq.${encodeURIComponent(wd)}`);
+  const map = {};
+  (rows||[]).forEach(r=> map[r.course_no] = r.bin);
+  return map;
+}
+
+function detectBinsHeuristic(courseNo, allCourseNos){
+  // fallback when no course_master entry: just call everything bin 1
+  return 1;
+}
+
+async function loadRosterMap(siteCode){
+  const rows = await sbSelect('roster', `site_code=eq.${encodeURIComponent(siteCode)}`);
+  const map = {};
+  (rows||[]).forEach(r=> map[r.worker_no] = {category: r.category||'', empType: r.emp_type||''});
+  return map;
+}
+
+async function loadWorkLog(siteCode, groupId, dateStr){
+  const dayStart = dateStr + 'T00:00:00';
+  const dayEnd = dateStr + 'T23:59:59.999';
+  let q = `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&cancelled=eq.false`;
+  if(groupId && groupId !== '__all__') q += `&group_id=eq.${encodeURIComponent(groupId)}`;
+  const rows = await sbSelect('work_log', q);
+  return rows || [];
+}
+
+function emptyBinStat(){ return {storeKeys:new Set(), count:0, seconds:0}; }
+function finalizeBinStat(s){
+  const minutes = s.seconds/60;
+  const productivity = minutes>0 ? Math.round(s.count*60/minutes) : 0;
+  return { stores: s.storeKeys.size, count: s.count, minutes: Math.round(minutes*10)/10, productivity };
+}
+
+async function render(){
+  const siteCode = $('siteSelect').value;
+  const groupId = $('groupSelect').value;
+  const dateStr = $('dateInput').value;
+  if(!siteCode || !dateStr){ return; }
+  localSet('report_site_code', siteCode);
+  localSet('report_group_id_'+siteCode, groupId);
+
+  $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg">読み込み中…</td></tr>';
+  $('summaryBar').innerHTML = '';
+
+  const [binMap, rosterMap, logRows] = await Promise.all([
+    loadCourseBinMap(siteCode, dateStr),
+    loadRosterMap(siteCode),
+    loadWorkLog(siteCode, groupId, dateStr)
+  ]);
+
+  if(logRows.length === 0){
+    $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg">この日の実績データがありません</td></tr>';
+    return;
+  }
+
+  const byWorker = {};
+  logRows.forEach(r=>{
+    const no = r.worker_no;
+    if(!byWorker[no]) byWorker[no] = { no, name: r.worker_name, bin1: emptyBinStat(), bin2: emptyBinStat() };
+    const bin = binMap[r.course_no] || detectBinsHeuristic(r.course_no);
+    const target = bin === 2 ? byWorker[no].bin2 : byWorker[no].bin1;
+    target.storeKeys.add(r.course_no + '-' + r.store_no);
+    target.count += r.count;
+    target.seconds += r.duration_sec;
+  });
+
+  const people = Object.values(byWorker).map(w=>{
+    const bin1 = finalizeBinStat(w.bin1);
+    const bin2 = finalizeBinStat(w.bin2);
+    const totalSeconds = w.bin1.seconds + w.bin2.seconds;
+    const totalCount = w.bin1.count + w.bin2.count;
+    const totalStores = w.bin1.storeKeys.size + w.bin2.storeKeys.size;
+    const totalMinutes = Math.round((totalSeconds/60)*10)/10;
+    const totalProd = totalMinutes>0 ? Math.round(totalCount*60/totalMinutes) : 0;
+    const roster = rosterMap[w.no] || {};
+    return {
+      no: w.no, name: w.name, category: roster.category || roster.empType || '-',
+      bin1, bin2,
+      total: { stores: totalStores, count: totalCount, minutes: totalMinutes, productivity: totalProd }
+    };
+  });
+
+  sortPeople(people);
+  renderSummary(people);
+  renderTable(people);
+}
+
+function sortPeople(people){
+  const keyMap = { productivity:'productivity', count:'count', stores:'stores', minutes:'minutes' };
+  const k = keyMap[sortKey] || 'productivity';
+  people.sort((a,b)=> b.total[k] - a.total[k]);
+}
+
+function renderSummary(people){
+  const totalCount = people.reduce((s,p)=>s+p.total.count,0);
+  const totalStores = people.reduce((s,p)=>s+p.total.stores,0);
+  const avgProd = people.length ? Math.round(people.reduce((s,p)=>s+p.total.productivity,0)/people.length) : 0;
+  $('summaryBar').innerHTML = `
+    <div class="summary-stat"><div class="n">${people.length}</div><div class="l">人数</div></div>
+    <div class="summary-stat"><div class="n">${totalStores}</div><div class="l">総店舗数</div></div>
+    <div class="summary-stat"><div class="n">${totalCount}</div><div class="l">総数量</div></div>
+    <div class="summary-stat"><div class="n">${avgProd}</div><div class="l">平均生産性/h</div></div>
+  `;
+}
+
+function renderTable(people){
+  $('resultBody').innerHTML = people.map(p => `
+    <tr>
+      <td class="name-col">${esc(p.name)}<span style="color:var(--muted);font-size:11px;"> (№${p.no})</span></td>
+      <td class="cat-col">${esc(p.category)}</td>
+      <td>${p.bin1.stores}</td><td>${p.bin1.count}</td><td>${p.bin1.minutes}</td><td>${p.bin1.productivity}</td>
+      <td class="group-sep">${p.bin2.stores}</td><td>${p.bin2.count}</td><td>${p.bin2.minutes}</td><td>${p.bin2.productivity}</td>
+      <td class="group-sep total-col">${p.total.stores}</td><td class="total-col">${p.total.count}</td><td class="total-col">${p.total.minutes}</td><td class="total-col total-prod">${p.total.productivity}</td>
+    </tr>`).join('');
+}
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+$('siteSelect').addEventListener('change', async ()=>{ await loadGroupOptions(); render(); });
+$('groupSelect').addEventListener('change', render);
+$('dateInput').addEventListener('change', render);
+$('sortRow').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.sort-btn');
+  if(!btn) return;
+  sortKey = btn.getAttribute('data-key');
+  document.querySelectorAll('.sort-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  render();
+});
+
+(async function init(){
+  $('dateInput').value = todayKey();
+  await loadSiteOptions();
+  await loadGroupOptions();
+  document.querySelector('.sort-btn[data-key="productivity"]').classList.add('active');
+  await render();
+})();
+</script>
+</body>
+</html>
