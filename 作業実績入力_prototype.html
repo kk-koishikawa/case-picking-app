@@ -342,6 +342,9 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <button class="hbtn" id="rosterBtn">名簿更新</button>
       <span class="conn" id="rosterStatus" style="min-width:120px;"><span class="dot" style="background:var(--steel);"></span><span id="rosterStatusText">名簿:読込中…</span></span>
       <input type="file" id="rosterFileInput" accept=".csv" style="display:none;">
+      <button class="hbtn" id="courseMasterBtn">コース表更新</button>
+      <span class="conn" id="courseMasterStatus" style="min-width:120px;"><span class="dot" style="background:var(--muted);"></span><span id="courseMasterStatusText">コース表:未設定</span></span>
+      <input type="file" id="courseMasterFileInput" accept=".xlsx" style="display:none;">
       <button class="hbtn" id="orderImportBtn">受注データ取得</button>
       <span class="conn" id="orderStatus" style="min-width:140px;"><span class="dot" style="background:var(--muted);"></span><span id="orderStatusText">受注:未取込</span></span>
       <input type="file" id="orderFileInput" accept=".csv" style="display:none;">
@@ -506,6 +509,16 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
   </div>
 </div>
 
+<div class="overlay" id="courseMasterOverlay">
+  <div class="confirm-card" style="max-width:420px;">
+    <p id="courseMasterSummaryText" style="white-space:pre-line;"></p>
+    <div class="cbtns">
+      <button class="no" id="courseMasterCancel">キャンセル</button>
+      <button class="yes" id="courseMasterApply">この内容で反映</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="confirmOverlay">
   <div class="confirm-card">
     <p id="confirmText"></p>
@@ -545,6 +558,7 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <h2>進捗ダッシュボード</h2>
       <button class="close-x" id="progressClose">&times;</button>
     </div>
+    <div id="progressGroupTabs" style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0;"></div>
     <div class="admin-body" id="progressBody"></div>
   </div>
 </div>
@@ -1242,8 +1256,22 @@ function detectBins(courseNumbers){
   }
   return [{label:'全体', min:uniq[0], max:uniq[uniq.length-1]}];
 }
+function detectBinsFromCourseTable(courseNumbers){
+  const uniq = [...new Set(courseNumbers)];
+  if(uniq.length === 0) return null;
+  // only trust the course table's 便 assignment if it covers every course seen today;
+  // otherwise fall back to the numeric-gap heuristic so an unmapped course never gets dropped
+  if(uniq.some(c => courseBinMap[c] === undefined)) return null;
+  const byBin = {};
+  uniq.forEach(c=>{
+    const b = courseBinMap[c];
+    if(!byBin[b]) byBin[b] = new Set();
+    byBin[b].add(c);
+  });
+  return Object.keys(byBin).map(Number).sort((a,b)=>a-b).map(b => ({label: b+'便', courseSet: byBin[b]}));
+}
 function computeBinData(bin, planEntries, doneEntries, openSessions, now){
-  const inBin = e => e.courseNo >= bin.min && e.courseNo <= bin.max;
+  const inBin = e => bin.courseSet ? bin.courseSet.has(e.courseNo) : (e.courseNo >= bin.min && e.courseNo <= bin.max);
   const plan = planEntries.filter(inBin);
   const done = doneEntries.filter(inBin);
   const openInBin = openSessions.filter(inBin);
@@ -1290,34 +1318,46 @@ function computeEndTime(data, currentProd, prevBinEnd, expectedProd, expectedBre
   }
   return null;
 }
-function renderProgress(){
-  const body = $('progressBody');
-  const g = resolveActiveGroup();
-  if(!g){
-    body.innerHTML = '<p style="padding:20px;color:var(--muted);">この端末の作業グループが未設定です(⚙設定から選んでください)。</p>';
-    return;
-  }
+let progressSelectedGroupId = null; // null = "all groups" (office view)
+
+function renderProgressTabs(){
+  const wrap = $('progressGroupTabs');
+  const groups = appSettings.groups || [];
+  if(groups.length <= 1){ wrap.innerHTML = ''; return; }
+  const tabs = [{id:null, name:'全グループ'}, ...groups.map(g=>({id:g.id, name:g.name}))];
+  wrap.innerHTML = tabs.map(t => `
+    <button class="settings-tab-btn${progressSelectedGroupId===t.id?' active':''}" data-gid="${t.id===null?'':t.id}" style="flex:none;padding:6px 14px;font-size:13px;">${escapeHtml(t.name)}</button>
+  `).join('');
+  wrap.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const gid = btn.getAttribute('data-gid');
+      progressSelectedGroupId = gid === '' ? null : gid;
+      renderProgress();
+    });
+  });
+}
+
+function computeGroupBinResults(g){
   const orderData = ORDER_DATA[g.id];
-  if(!orderData || !orderData.loaded || Object.keys(orderData.map).length === 0){
-    body.innerHTML = '<p style="padding:20px;color:var(--muted);">本日の受注データがまだ取り込まれていません(「受注データ取得」で取り込んでください)。</p>';
-    return;
-  }
+  if(!orderData || !orderData.loaded || Object.keys(orderData.map).length === 0) return null;
   const planEntries = Object.values(orderData.map);
   const doneEntries = todayLog.filter(r => !r.cancelled && r.groupId === g.id);
   const openSessionsInGroup = Object.values(sessions).filter(s => s.groupId === g.id);
 
-  const bins = detectBins(planEntries.map(e=>e.courseNo));
+  const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo)) || detectBins(planEntries.map(e=>e.courseNo));
   const now = new Date();
   let prevEnd = null;
-  const results = bins.map(bin=>{
+  return bins.map(bin=>{
     const data = computeBinData(bin, planEntries, doneEntries, openSessionsInGroup, now);
     const prod = currentProductivityFor(data, g.expectedProductivity, now);
     const endResult = computeEndTime(data, prod, prevEnd, g.expectedProductivity, g.expectedBreakMinutes, now);
     prevEnd = endResult ? endResult.time : prevEnd;
     return {...data, prod, endResult};
   });
+}
 
-  body.innerHTML = `<div class="progress-grid">` + results.map(r=>{
+function renderBinCards(results){
+  return `<div class="progress-grid">` + results.map(r=>{
     const cPct = r.courseTotal ? Math.round(r.courseDone/r.courseTotal*100) : 0;
     const vPct = r.volumeTotal ? Math.round(r.volumeDone/r.volumeTotal*100) : 0;
     const endLabel = r.endResult ? (fmtTimeShort(r.endResult.time.toISOString()) + (r.endResult.actual?'(実績)':'')) : '--:--';
@@ -1334,7 +1374,38 @@ function renderProgress(){
     </div>`;
   }).join('') + `</div>`;
 }
+
+function renderProgress(){
+  const body = $('progressBody');
+  renderProgressTabs();
+
+  let targetGroups;
+  if(progressSelectedGroupId === null){
+    targetGroups = appSettings.groups || [];
+  } else {
+    const g = (appSettings.groups||[]).find(x=>x.id===progressSelectedGroupId);
+    targetGroups = g ? [g] : [];
+  }
+
+  if(targetGroups.length === 0){
+    body.innerHTML = '<p style="padding:20px;color:var(--muted);">この拠点にはまだ作業グループがありません。</p>';
+    return;
+  }
+
+  const sections = targetGroups.map(g=>{
+    const results = computeGroupBinResults(g);
+    const heading = progressSelectedGroupId === null
+      ? `<h3 style="margin:18px 2px 8px;font-size:15px;">${escapeHtml(g.name)}</h3>` : '';
+    if(!results){
+      return heading + '<p style="padding:0 2px 10px;color:var(--muted);font-size:13px;">本日の受注データが未取込です。</p>';
+    }
+    return heading + renderBinCards(results);
+  });
+  body.innerHTML = sections.join('');
+}
 $('progressBtn').addEventListener('click', ()=>{
+  const active = resolveActiveGroup();
+  progressSelectedGroupId = active ? active.id : null;
   renderProgress();
   $('progressOverlay').classList.add('show');
 });
@@ -1787,6 +1858,7 @@ $('settingsSave').addEventListener('click', async ()=>{
     renderDeviceGroupBadge();
     $('settingsOverlay').classList.remove('show');
     await loadRoster();
+    await loadCourseMaster();
     await loadOrders();
     return;
   }
@@ -1840,6 +1912,7 @@ $('settingsSave').addEventListener('click', async ()=>{
   renderDeviceGroupBadge();
   $('settingsOverlay').classList.remove('show');
   await loadRoster();  // site code may have just been set for the first time
+  await loadCourseMaster();
   await loadOrders();  // group definition may have changed, refresh order status
 });
 
@@ -1898,7 +1971,8 @@ function parsePkRows(text){
 }
 function aggregateForGroup(rows, ranges){
   const map = {};
-  let inRange = 0, outOfRange = 0, badRows = 0;
+  let inRange = 0, outOfRange = 0, badRows = 0, notInCourseTable = 0;
+  const hasCourseTable = validCourseSet.size > 0;
   rows.forEach((r, idx)=>{
     if(!r || r.length < 12) { badRows++; return; }
     const courseNo = parseInt(r[6], 10);
@@ -1907,19 +1981,135 @@ function aggregateForGroup(rows, ranges){
     const lotSize = parseInt(r[10], 10);
     const bara = parseInt(r[11], 10);
     if(!Number.isInteger(courseNo) || !Number.isInteger(storeNo) || !Number.isInteger(shelf)){ badRows++; return; }
+    if(hasCourseTable && !validCourseSet.has(courseNo)){ notInCourseTable++; return; }
     const inAnyRange = ranges.some(rg => shelf >= rg.min && shelf <= rg.max);
     if(!inAnyRange){ outOfRange++; return; }
     if(!lotSize){ badRows++; return; }
     inRange++;
     const lots = bara / lotSize;
     const key = courseNo + '-' + storeNo;
-    // first time this course/store stop appears in the file = its position in the work order
-    if(!map[key]) map[key] = {courseNo, storeNo, lots: 0, seq: idx};
+    if(!map[key]){
+      // 作業順はコース表があればそこから(コース単位＋店番で並びを安定させる)、無ければファイル内の出現順にフォールバック
+      const seq = hasCourseTable && courseSeqMap[courseNo] !== undefined
+        ? courseSeqMap[courseNo] * 1000 + storeNo
+        : idx;
+      map[key] = {courseNo, storeNo, lots: 0, seq};
+    }
     map[key].lots += lots;
   });
   Object.values(map).forEach(v=> v.lots = Math.round(v.lots));
-  return {map, inRange, outOfRange, badRows, totalRows: rows.length};
+  return {map, inRange, outOfRange, badRows, notInCourseTable, totalRows: rows.length};
 }
+
+// ---------- course master (拠点共通のコース表: 作業順・便・曜日別コース№) ----------
+const WEEKDAY_JA = ['日','月','火','水','木','金','土'];
+function todayWeekdayJa(){ return WEEKDAY_JA[new Date().getDay()]; }
+
+let courseSeqMap = {};   // courseNo -> 作業順(そのコースの基準値)
+let courseBinMap = {};   // courseNo -> 便(1 or 2)
+let validCourseSet = new Set(); // 今日の曜日で有効なコース№の集合(空なら未設定=絞り込みなし)
+
+function setCourseMasterStatus(text, color){
+  $('courseMasterStatusText').textContent = text;
+  $('courseMasterStatus').querySelector('.dot').style.background = color || 'var(--muted)';
+}
+async function loadCourseMaster(){
+  courseSeqMap = {}; courseBinMap = {}; validCourseSet = new Set();
+  const siteCode = appSettings.siteCode;
+  if(!siteCode){ setCourseMasterStatus('コース表:未設定', 'var(--muted)'); return; }
+  const wd = todayWeekdayJa();
+  const rows = await sbSelect('course_master', `site_code=eq.${encodeURIComponent(siteCode)}&weekday=eq.${encodeURIComponent(wd)}`);
+  if(!rows || rows.length === 0){
+    setCourseMasterStatus(`コース表:未設定(${wd}曜日分なし・絞り込みなし)`, 'var(--muted)');
+    return;
+  }
+  rows.forEach(r=>{
+    courseSeqMap[r.course_no] = r.seq;
+    courseBinMap[r.course_no] = r.bin;
+    validCourseSet.add(r.course_no);
+  });
+  setCourseMasterStatus(`コース表:${wd}曜日 ${rows.length}コース`, 'var(--green)');
+}
+
+function parseCourseMasterXlsx(buffer){
+  const wb = XLSX.read(buffer, {type:'array'});
+  const sheetName = wb.SheetNames.find(n => n === 'ケース作業順表') || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true});
+  // fixed layout: col0=作業順 col1=便 col2..8 = 月,火,水,木,金,土,日
+  const weekdayCols = ['月','火','水','木','金','土','日'];
+  const records = [];
+  for(let i=1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const seq = parseInt(row[0], 10);
+    const bin = parseInt(row[1], 10);
+    if(!Number.isInteger(seq) || !Number.isInteger(bin)) continue;
+    weekdayCols.forEach((wd, ci)=>{
+      const v = row[2+ci];
+      if(v === undefined || v === null || v === '') return; // 空欄は無視
+      const courseNo = parseInt(v, 10);
+      if(!Number.isInteger(courseNo)) return;
+      records.push({weekday: wd, seq, bin, courseNo});
+    });
+  }
+  return records;
+}
+
+let pendingCourseMasterImport = null;
+$('courseMasterBtn').addEventListener('click', ()=>{
+  if(!appSettings.siteCode){
+    alert('先に⚙設定で拠点コードを設定してください');
+    return;
+  }
+  $('courseMasterFileInput').click();
+});
+$('courseMasterFileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  const buffer = await file.arrayBuffer();
+  let records;
+  try{
+    records = parseCourseMasterXlsx(buffer);
+  }catch(err){
+    alert('ファイルの読み込みに失敗しました。「ケース作業順表」シートを含むxlsxか確認してください。');
+    return;
+  }
+  if(records.length === 0){
+    alert('コース表からデータを読み取れませんでした。');
+    return;
+  }
+  const counts = {};
+  records.forEach(r=> counts[r.weekday] = (counts[r.weekday]||0)+1);
+  pendingCourseMasterImport = records;
+  $('courseMasterSummaryText').textContent =
+    `コース表を読み込みました。\n\n` +
+    WEEKDAY_JA.filter(w=>w!=='日'||counts['日']).map(w=> counts[w] ? `${w}曜日: ${counts[w]}コース` : null).filter(Boolean).join('\n') +
+    `\n\nこの内容で、拠点「${appSettings.siteCode}」のコース表を置き換えます。よろしいですか？`;
+  $('courseMasterOverlay').classList.add('show');
+});
+$('courseMasterCancel').addEventListener('click', ()=>{
+  pendingCourseMasterImport = null;
+  $('courseMasterOverlay').classList.remove('show');
+});
+$('courseMasterApply').addEventListener('click', async ()=>{
+  if(!pendingCourseMasterImport) return;
+  const siteCode = appSettings.siteCode;
+  const updatedAt = new Date().toISOString();
+  await sbDelete('course_master', `site_code=eq.${encodeURIComponent(siteCode)}`);
+  const rows = pendingCourseMasterImport.map(r=>({
+    site_code: siteCode, weekday: r.weekday, seq: r.seq, bin: r.bin, course_no: r.courseNo, updated_at: updatedAt
+  }));
+  // insert in chunks to stay well within a single request's size
+  for(let i=0;i<rows.length;i+=500){
+    await sbInsert('course_master', rows.slice(i, i+500));
+  }
+  pendingCourseMasterImport = null;
+  $('courseMasterOverlay').classList.remove('show');
+  await loadCourseMaster();
+  await loadOrders(); // re-filter today's already-imported orders against the new course table
+});
 
 function distinctFolders(){
   return [...new Set((appSettings.groups||[]).map(g=>g.folder))];
@@ -1958,10 +2148,11 @@ $('orderFileInput').addEventListener('change', async (e)=>{
   pendingOrderImport = {};
   const lines = [`PKDATA.CSV(${pendingOrderFolder})を読み込みました。\n`];
   targetGroups.forEach(g=>{
-    const {map, inRange, outOfRange, badRows, totalRows} = aggregateForGroup(rows, g.ranges);
+    const {map, inRange, outOfRange, badRows, notInCourseTable, totalRows} = aggregateForGroup(rows, g.ranges);
     pendingOrderImport[g.id] = map;
     const rangeText = g.ranges.map(r=>r.min+'〜'+r.max).join(' / ');
-    lines.push(`【${g.name}】棚番${rangeText}: 対象${inRange}行 / 組み合わせ${Object.keys(map).length}件`);
+    const courseNote = validCourseSet.size>0 ? ` / コース表外${notInCourseTable}行を除外` : ' / コース表未設定のため絞り込みなし';
+    lines.push(`【${g.name}】棚番${rangeText}: 対象${inRange}行 / 組み合わせ${Object.keys(map).length}件${courseNote}`);
   });
   lines.push('\nこの内容を本日の受注データとして反映します。よろしいですか？');
   $('orderSummaryText').textContent = lines.join('\n');
@@ -2007,6 +2198,7 @@ setInterval(tickTimers, 1000);
   loadDeviceGroup();
   renderDeviceGroupBadge();
   await loadRoster();
+  await loadCourseMaster();
   await loadOrders();
   await refreshFromServer();
   setInterval(refreshFromServer, 5000);
