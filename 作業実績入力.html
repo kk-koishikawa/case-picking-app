@@ -47,19 +47,19 @@ body{
 
 /* ---------- HEADER ---------- */
 header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  padding:14px 22px;gap:10px 18px;
   background:var(--ink);
   color:#fff;
   flex-shrink:0;
 }
-.brand{display:flex;align-items:baseline;gap:10px;}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
 .brand .mark{
   font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.18em;
   background:var(--amber);color:var(--ink);padding:3px 8px;border-radius:4px;
 }
 .brand h1{font-size:19px;font-weight:600;margin:0;letter-spacing:.02em;}
-.header-right{display:flex;align-items:center;gap:18px;}
+.header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:10px;}
 .clock{
   font-family:'Space Mono',monospace;font-size:22px;letter-spacing:.03em;
   color:var(--amber);
@@ -1305,7 +1305,9 @@ function computeGroupBinResults(g){
   const doneEntries = todayLog.filter(r => !r.cancelled && r.groupId === g.id);
   const openSessionsInGroup = Object.values(sessions).filter(s => s.groupId === g.id);
 
-  const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo)) || detectBins(planEntries.map(e=>e.courseNo));
+  const fromTable = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo));
+  const bins = fromTable || detectBins(planEntries.map(e=>e.courseNo));
+  const debugSource = fromTable ? 'コース表' : '推測(番号の隙間)';
   const now = new Date();
   let prevEnd = null;
   return bins.map(bin=>{
@@ -1313,7 +1315,8 @@ function computeGroupBinResults(g){
     const prod = currentProductivityFor(data, g.expectedProductivity, now);
     const endResult = computeEndTime(data, prod, prevEnd, g.expectedProductivity, g.expectedBreakMinutes, now);
     prevEnd = endResult ? endResult.time : prevEnd;
-    return {...data, prod, endResult};
+    return {...data, prod, endResult, debugSource, debugPlanTotal: planEntries.length,
+            debugBinSize: bin.courseSet ? bin.courseSet.size : `${bin.min}-${bin.max}`};
   });
 }
 
@@ -1332,6 +1335,7 @@ function renderBinCards(results){
         <div class="bin-stat"><div class="n">${endLabel}</div><div class="l">終了予測</div></div>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-top:10px;">${r.started ? `開始 ${fmtTimeShort(r.binStart.toISOString())} ・ 現在の生産性 約${Math.round(r.prod)}個/人時` : '未開始(想定生産性で予測)'}</div>
+      <div style="font-size:10px;color:#B9A98A;margin-top:6px;">判定:${r.debugSource} ｜ 全体件数:${r.debugPlanTotal} ｜ この便のコース数:${r.debugBinSize}</div>
     </div>`;
   }).join('') + `</div>`;
 }
