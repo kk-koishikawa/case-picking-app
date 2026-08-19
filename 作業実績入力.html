@@ -329,6 +329,7 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
       <div class="clock" id="clock">--:--:--</div>
       <button class="hbtn" id="orderImportBtn">受注データ取得</button>
       <span class="conn" id="orderStatus" style="min-width:140px;"><span class="dot" style="background:var(--muted);"></span><span id="orderStatusText">受注:未取込</span></span>
+      <button class="hbtn" id="orderManageBtn">受注データ確認</button>
       <input type="file" id="orderFileInput" accept=".csv" style="display:none;">
       <button class="hbtn" id="progressBtn">📊 進捗</button>
       <button class="hbtn" id="settingsBtn">⚙ 設定</button>
@@ -490,6 +491,20 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
     <div class="cbtns">
       <button class="no" id="orderCancel">キャンセル</button>
       <button class="yes" id="orderApply">この内容で反映</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay admin-overlay" id="orderManageOverlay">
+  <div class="admin-card" style="width:min(560px,92vw);">
+    <div class="admin-head">
+      <h2>受注データ確認</h2>
+      <button class="close-x" id="orderManageClose">&times;</button>
+    </div>
+    <div class="admin-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">前日までに完了済みのコース・店など、不要になった予定だけを個別に削除できます。削除しても実績には影響しません。</div>
+      <input type="text" id="orderManageFilter" placeholder="コース№で絞り込み" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;margin-bottom:14px;">
+      <div id="orderManageList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -2026,6 +2041,59 @@ $('orderApply').addEventListener('click', async ()=>{
   pendingOrderImport = null;
   $('orderOverlay').classList.remove('show');
 });
+
+// ---------- order data manual cleanup (前日の先行作業などで不要になった予定を消す) ----------
+function renderOrderManageList(){
+  const g = resolveActiveGroup();
+  const list = $('orderManageList');
+  if(!g){
+    list.innerHTML = '<div class="working-empty">この端末の作業グループが未設定です</div>';
+    return;
+  }
+  const orderData = ORDER_DATA[g.id];
+  const orderMap = (orderData && orderData.loaded) ? orderData.map : null;
+  if(!orderMap || Object.keys(orderMap).length === 0){
+    list.innerHTML = '<div class="working-empty">本日の受注データがまだありません</div>';
+    return;
+  }
+  const filterText = $('orderManageFilter').value.trim();
+  let entries = Object.values(orderMap).sort((a,b)=> a.courseNo-b.courseNo || a.storeNo-b.storeNo);
+  if(filterText) entries = entries.filter(e => String(e.courseNo).includes(filterText));
+  if(entries.length === 0){
+    list.innerHTML = '<div class="working-empty">該当するコースがありません</div>';
+    return;
+  }
+  list.innerHTML = entries.map(e => `
+    <div class="pick-store-item" data-course="${e.courseNo}" data-store="${e.storeNo}">
+      <div class="psi-code">${e.courseNo} － ${e.storeNo}</div>
+      <div class="psi-lots">${e.lots}個口予定</div>
+      <button class="wk-force-del" data-course="${e.courseNo}" data-store="${e.storeNo}" title="この予定を削除">×</button>
+    </div>`).join('');
+  list.querySelectorAll('.wk-force-del').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const courseNo = parseInt(btn.getAttribute('data-course'), 10);
+      const storeNo = parseInt(btn.getAttribute('data-store'), 10);
+      showConfirm(`コース${courseNo}－店${storeNo} の予定を削除します。前日までに終わっている分の後始末用です。よろしいですか？`, async ()=>{
+        const siteCode = appSettings.siteCode;
+        const g2 = resolveActiveGroup();
+        await sbDelete('orders',
+          `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${todayKey()}&group_id=eq.${encodeURIComponent(g2.id)}&course_no=eq.${courseNo}&store_no=eq.${storeNo}`);
+        const orderData = ORDER_DATA[g2.id];
+        if(orderData) delete orderData.map[courseNo+'-'+storeNo];
+        renderOrderManageList();
+        if(step === 'pickStore') renderPickStoreList();
+      });
+    });
+  });
+}
+$('orderManageBtn').addEventListener('click', ()=>{
+  $('orderManageFilter').value = '';
+  renderOrderManageList();
+  $('orderManageOverlay').classList.add('show');
+});
+$('orderManageClose').addEventListener('click', ()=> $('orderManageOverlay').classList.remove('show'));
+$('orderManageFilter').addEventListener('input', renderOrderManageList);
 
 // ---------- init ----------
 buildKeypad();

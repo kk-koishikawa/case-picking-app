@@ -147,6 +147,7 @@ table.raw-table input{padding:5px;border:1px solid var(--line);border-radius:5px
     <div>
       <label>&nbsp;</label><br>
       <button id="printBtn" style="padding:8px 14px;border-radius:6px;border:1px solid var(--amber);background:var(--amber);color:var(--ink);font-weight:700;font-family:inherit;font-size:13px;cursor:pointer;">🖨 印刷</button>
+      <button id="csvBtn" style="padding:8px 14px;border-radius:6px;border:1px solid #46505E;background:#232D3B;color:#fff;font-weight:700;font-family:inherit;font-size:13px;cursor:pointer;">⬇ CSV</button>
     </div>
   </div>
 </header>
@@ -248,6 +249,7 @@ let expandedPeople = new Set();
 let editingRawId = null;
 let rawLogsByWorker = {}; // worker_no -> array of raw work_log rows (all, including cancelled)
 let lastGroupBinMap = {};
+let lastPeople = [];
 
 async function loadSiteOptions(){
   const rows = await sbSelect('work_groups', 'select=site_code');
@@ -368,6 +370,7 @@ async function render(){
   });
 
   sortPeople(people);
+  lastPeople = people;
   renderSummary(people);
   renderTable(people);
   updatePrintHeading();
@@ -385,6 +388,25 @@ function updatePrintHeading(){
   `;
 }
 $('printBtn').addEventListener('click', ()=> window.print());
+$('csvBtn').addEventListener('click', ()=>{
+  if(lastPeople.length === 0){ alert('ダウンロードできるデータがありません'); return; }
+  const siteCode = $('siteSelect').value;
+  const dateStr = $('dateInput').value;
+  const header = ['担当者№','氏名','区分','1便_店舗数','1便_数量','1便_作業時間分','1便_生産性','2便_店舗数','2便_数量','2便_作業時間分','2便_生産性','合計_店舗数','合計_数量','合計_作業時間分','合計_生産性'];
+  const rows = lastPeople.map(p=>[
+    p.no, p.name, p.category,
+    p.bin1.stores, p.bin1.count, p.bin1.minutes, p.bin1.productivity,
+    p.bin2.stores, p.bin2.count, p.bin2.minutes, p.bin2.productivity,
+    p.total.stores, p.total.count, p.total.minutes, p.total.productivity
+  ]);
+  const csv = [header, ...rows].map(row => row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `個人別集計_${siteCode}_${dateStr}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
 
 function sortPeople(people){
   const keyMap = { productivity:'productivity', count:'count', stores:'stores', minutes:'minutes' };
