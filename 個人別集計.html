@@ -88,12 +88,31 @@ td.total-col{background:#FCF7EC;}
 
 .empty-msg{padding:60px 20px;text-align:center;color:var(--muted);}
 
+tr.person-row{cursor:pointer;}
+tr.person-row:hover td{background:#F3EEE0;}
+tr.person-row.open td{background:#FBF3E2;}
+tr.person-row .arrow{display:inline-block;width:12px;color:var(--steel);}
+tr.detail-row td{background:#FCFBF8;padding:14px 18px;}
+
+table.raw-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.raw-table th{text-align:left;color:var(--muted);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--line);}
+table.raw-table td{padding:6px 8px;border-bottom:1px solid var(--line);}
+table.raw-table tr.cancelled td{color:var(--muted);text-decoration:line-through;}
+table.raw-table input{padding:5px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:12px;width:100%;}
+
+.mini-btn{background:var(--steel);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-right:6px;}
+.mini-btn:active{background:#2F5670;}
+.del-btn{background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;}
+.del-btn:active{background:#FBEAE8;}
+
 .print-only{display:none;}
 
 @media print{
   @page{ size: landscape; margin: 12mm; }
   body{ background:#fff; }
   #appHeader, .controls, .sort-row{ display:none !important; }
+  tr.detail-row{ display:none !important; }
+  tr.person-row .arrow{ display:none; }
   .print-only{
     display:block; margin:0 0 14px; font-family:'IBM Plex Sans JP';
   }
@@ -177,6 +196,22 @@ async function sbSelect(table, query=''){
     return await res.json();
   }catch(e){ console.error(e); return null; }
 }
+async function sbUpdate(table, query, patch){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+      method:'PATCH', headers: SB_HEADERS, body: JSON.stringify(patch)
+    });
+    return res.ok;
+  }catch(e){ console.error(e); return false; }
+}
+async function sbDelete(table, query){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+      method:'DELETE', headers: SB_HEADERS
+    });
+    return res.ok;
+  }catch(e){ console.error(e); return false; }
+}
 
 function localGet(key){ try{ const v = localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function localSet(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){} }
@@ -191,8 +226,28 @@ function weekdayJaOf(dateStr){
   const [y,m,d] = dateStr.split('-').map(Number);
   return WEEKDAY_JA[new Date(y, m-1, d).getDay()];
 }
+function fmtTimeShort(iso){
+  const d = new Date(iso);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDuration(sec){
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const pad = n=>String(n).padStart(2,'0');
+  return h>0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function toLocalInput(iso){
+  const d = new Date(iso);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 let sortKey = 'productivity';
+let expandedPeople = new Set();
+let editingRawId = null;
+let rawLogsByWorker = {}; // worker_no -> array of raw work_log rows (all, including cancelled)
+let lastGroupBinMap = {};
 
 async function loadSiteOptions(){
   const rows = await sbSelect('work_groups', 'select=site_code');
@@ -237,10 +292,10 @@ async function loadRosterMap(siteCode){
 async function loadWorkLog(siteCode, groupId, dateStr){
   const dayStart = dateStr + 'T00:00:00';
   const dayEnd = dateStr + 'T23:59:59.999';
-  let q = `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&cancelled=eq.false`;
+  let q = `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&order=start_at.asc`;
   if(groupId && groupId !== '__all__') q += `&group_id=eq.${encodeURIComponent(groupId)}`;
   const rows = await sbSelect('work_log', q);
-  return rows || [];
+  return rows;
 }
 
 function emptyBinStat(){ return {storeKeys:new Set(), count:0, seconds:0}; }
@@ -266,14 +321,27 @@ async function render(){
     loadRosterMap(siteCode),
     loadWorkLog(siteCode, groupId, dateStr)
   ]);
+  lastGroupBinMap = binMap;
 
+  if(logRows === null){
+    $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg" style="color:var(--red);">⚠ 通信エラーでデータを取得できませんでした。もう一度お試しください。</td></tr>';
+    return;
+  }
   if(logRows.length === 0){
     $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg">この日の実績データがありません</td></tr>';
+    rawLogsByWorker = {};
     return;
   }
 
-  const byWorker = {};
+  rawLogsByWorker = {};
   logRows.forEach(r=>{
+    if(!rawLogsByWorker[r.worker_no]) rawLogsByWorker[r.worker_no] = [];
+    rawLogsByWorker[r.worker_no].push(r);
+  });
+
+  const validRows = logRows.filter(r => !r.cancelled);
+  const byWorker = {};
+  validRows.forEach(r=>{
     const no = r.worker_no;
     if(!byWorker[no]) byWorker[no] = { no, name: r.worker_name, bin1: emptyBinStat(), bin2: emptyBinStat() };
     const bin = binMap[r.course_no] || detectBinsHeuristic(r.course_no);
@@ -337,14 +405,124 @@ function renderSummary(people){
 }
 
 function renderTable(people){
-  $('resultBody').innerHTML = people.map(p => `
-    <tr>
-      <td class="name-col">${esc(p.name)}<span style="color:var(--muted);font-size:11px;"> (№${p.no})</span></td>
+  $('resultBody').innerHTML = people.map(p => {
+    const isOpen = expandedPeople.has(String(p.no));
+    const summaryRow = `
+    <tr class="person-row${isOpen?' open':''}" data-no="${p.no}">
+      <td class="name-col"><span class="arrow">${isOpen?'▼':'▶'}</span> ${esc(p.name)}<span style="color:var(--muted);font-size:11px;"> (№${p.no})</span></td>
       <td class="cat-col">${esc(p.category)}</td>
       <td>${p.bin1.stores}</td><td>${p.bin1.count}</td><td>${p.bin1.minutes}</td><td>${p.bin1.productivity}</td>
       <td class="group-sep">${p.bin2.stores}</td><td>${p.bin2.count}</td><td>${p.bin2.minutes}</td><td>${p.bin2.productivity}</td>
       <td class="group-sep total-col">${p.total.stores}</td><td class="total-col">${p.total.count}</td><td class="total-col">${p.total.minutes}</td><td class="total-col total-prod">${p.total.productivity}</td>
-    </tr>`).join('');
+    </tr>`;
+    const detailRow = isOpen ? `
+    <tr class="detail-row" data-no="${p.no}">
+      <td colspan="14">${renderPersonDetail(p.no)}</td>
+    </tr>` : '';
+    return summaryRow + detailRow;
+  }).join('');
+
+  $('resultBody').querySelectorAll('.person-row').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const no = tr.getAttribute('data-no');
+      if(expandedPeople.has(no)) expandedPeople.delete(no); else expandedPeople.add(no);
+      render();
+    });
+  });
+  wireDetailHandlers();
+}
+
+function renderPersonDetail(no){
+  const rows = (rawLogsByWorker[no] || []).slice().sort((a,b)=> new Date(a.start_at)-new Date(b.start_at));
+  if(rows.length === 0) return '<div class="empty-msg">データがありません</div>';
+  const body = rows.map(r=>{
+    const bin = lastGroupBinMap[r.course_no] || detectBinsHeuristic(r.course_no);
+    if(String(r.id) === String(editingRawId)){
+      return `
+      <tr class="raw-row editing" data-id="${r.id}">
+        <td>${esc(r.course_name)}</td><td>${r.store_no}</td><td>${bin}便</td>
+        <td><input type="number" class="edit-count" value="${r.count}"></td>
+        <td colspan="2"><input type="datetime-local" class="edit-start" value="${toLocalInput(r.start_at)}"></td>
+        <td colspan="2"><input type="datetime-local" class="edit-end" value="${toLocalInput(r.end_at)}"></td>
+        <td colspan="2">
+          <button class="mini-btn" data-save="${r.id}">保存</button>
+          <button class="del-btn" data-canceledit="${r.id}">キャンセル</button>
+        </td>
+      </tr>`;
+    }
+    return `
+    <tr class="raw-row${r.cancelled?' cancelled':''}" data-id="${r.id}">
+      <td>${esc(r.course_name)}</td><td>${r.store_no}</td><td>${bin}便</td>
+      <td>${r.count}</td>
+      <td colspan="2">${fmtTimeShort(r.start_at)}</td>
+      <td colspan="2">${fmtTimeShort(r.end_at)}(${fmtDuration(r.duration_sec)})</td>
+      <td>${r.cancelled ? '取消' : r.productivity}</td>
+      <td>
+        <button class="mini-btn" data-edit="${r.id}">編集</button>
+        <button class="del-btn" data-del="${r.id}">削除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<table class="raw-table">
+    <thead><tr><th>コース</th><th>店№</th><th>便</th><th>個口数</th><th colspan="2">開始</th><th colspan="2">終了</th><th>生産性/h</th><th></th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+function wireDetailHandlers(){
+  const body = $('resultBody');
+  body.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      editingRawId = btn.getAttribute('data-edit');
+      render();
+    });
+  });
+  body.querySelectorAll('[data-canceledit]').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      editingRawId = null;
+      render();
+    });
+  });
+  body.querySelectorAll('[data-save]').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      ev.stopPropagation();
+      const id = btn.getAttribute('data-save');
+      const tr = btn.closest('tr');
+      const count = parseInt(tr.querySelector('.edit-count').value, 10);
+      const startVal = tr.querySelector('.edit-start').value;
+      const endVal = tr.querySelector('.edit-end').value;
+      if(!Number.isInteger(count) || count < 0 || !startVal || !endVal){
+        alert('入力内容を確認してください');
+        return;
+      }
+      const startISO = new Date(startVal).toISOString();
+      const endISO = new Date(endVal).toISOString();
+      const durationSec = Math.max(0, Math.round((new Date(endISO) - new Date(startISO))/1000));
+      if(durationSec === 0){
+        alert('終了時刻は開始時刻より後にしてください');
+        return;
+      }
+      const productivity = Math.round(count * 3600 / durationSec);
+      const ok = await sbUpdate('work_log', `id=eq.${id}`, {
+        count, start_at: startISO, end_at: endISO, duration_sec: durationSec, productivity
+      });
+      if(!ok){ alert('保存に失敗しました。もう一度お試しください。'); return; }
+      editingRawId = null;
+      await render();
+    });
+  });
+  body.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      ev.stopPropagation();
+      const id = btn.getAttribute('data-del');
+      if(!confirm('このデータを削除します。よろしいですか？(元に戻せません)')) return;
+      const ok = await sbDelete('work_log', `id=eq.${id}`);
+      if(!ok){ alert('削除に失敗しました。もう一度お試しください。'); return; }
+      await render();
+    });
+  });
 }
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }

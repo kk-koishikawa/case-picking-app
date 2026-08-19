@@ -253,6 +253,11 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
 .wk-timer{
   font-family:'Space Mono',monospace;font-size:17px;font-weight:700;color:var(--steel);flex-shrink:0;
 }
+.wk-force-del{
+  background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;
+  width:26px;height:26px;font-size:15px;cursor:pointer;flex-shrink:0;margin-left:6px;
+}
+.wk-force-del:active{background:#FBEAE8;border-color:var(--red);color:var(--red);}
 
 .summary-row{display:flex;gap:14px;padding:14px 18px;}
 .stat{flex:1;background:#F7F5F0;border-radius:10px;padding:10px 12px;text-align:center;}
@@ -296,23 +301,6 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
 .admin-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:18px 22px;border-bottom:1px solid var(--line);}
 .admin-head h2{margin:0;font-size:19px;}
 .admin-body{overflow-y:auto;padding:0 22px 22px;}
-table.log{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;}
-table.log th{
-  text-align:left;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;
-  padding:6px 8px;border-bottom:2px solid var(--ink);position:sticky;top:0;background:var(--panel);
-}
-table.log td{padding:8px;border-bottom:1px solid var(--line);}
-table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
-.worker-summary-row{cursor:pointer;background:#F7F5F0;}
-.worker-summary-row:active{background:#EFEBE2;}
-.worker-summary-row td{border-bottom:1px solid var(--line);padding:10px 8px;}
-.worker-summary-inner{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
-.wsi-left{font-weight:700;}
-.wsi-arrow{display:inline-block;width:14px;color:var(--steel);}
-.wsi-right{color:var(--muted);font-family:'Space Mono',monospace;font-size:12px;}
-.worker-detail-row td{background:#FCFBF8;}
-.log-del-btn{background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;}
-.log-del-btn:active{background:#FBEAE8;}
 .close-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
 .export-btn{background:var(--steel);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;}
 
@@ -343,7 +331,6 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
       <span class="conn" id="orderStatus" style="min-width:140px;"><span class="dot" style="background:var(--muted);"></span><span id="orderStatusText">受注:未取込</span></span>
       <input type="file" id="orderFileInput" accept=".csv" style="display:none;">
       <button class="hbtn" id="progressBtn">📊 進捗</button>
-      <button class="hbtn" id="adminBtn">本日の実績</button>
       <button class="hbtn" id="settingsBtn">⚙ 設定</button>
       <input type="file" id="rosterFileInput" accept=".csv" style="display:none;">
       <input type="file" id="courseMasterFileInput" accept=".xlsx" style="display:none;">
@@ -537,29 +524,6 @@ table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
   </div>
 </div>
 
-<div class="overlay admin-overlay" id="adminOverlay">
-  <div class="admin-card">
-    <div class="admin-head">
-      <h2 id="adminHeading">本日の実績ログ</h2>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input type="date" id="reportDateInput" style="padding:8px;border:1px solid var(--line);border-radius:6px;font-family:'Space Mono',monospace;font-size:14px;min-width:150px;">
-        <button class="export-btn" id="exportXlsxBtn" style="background:var(--muted);">XLSX(現行互換)</button>
-        <button class="export-btn" id="exportBtn">CSV(詳細版)</button>
-        <button class="close-x" id="adminClose">&times;</button>
-      </div>
-    </div>
-    <div class="admin-body">
-      <table class="log">
-        <thead><tr>
-          <th>担№</th><th>氏名</th><th>グループ</th><th>コース</th><th>店№</th><th>個口数</th>
-          <th>開始</th><th>終了</th><th>作業時間</th><th>生産性/h</th><th></th>
-        </tr></thead>
-        <tbody id="logBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
 <div class="overlay admin-overlay" id="progressOverlay">
   <div class="admin-card">
     <div class="admin-head">
@@ -746,11 +710,25 @@ function renderWorkingList(){
           <div class="wk-meta">${escapeHtml(s.courseName)} / 店${s.storeNo} ・ ${s.count}個口</div>
         </div>
         <div class="wk-timer" data-start="${s.startISO}">${fmtDuration(elapsed)}</div>
+        <button class="wk-force-del" data-no="${s.no}" title="終了忘れなどを強制的に削除">×</button>
       </div>`;
     }).join('');
     if(!multiGroup) return rows;
     return `<div style="font-size:12px;font-weight:700;color:var(--steel);padding:6px 8px 2px;">${escapeHtml(g)}</div>${rows}`;
   }).join('');
+  list.querySelectorAll('.wk-force-del').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const no = btn.getAttribute('data-no');
+      const s = sessions[no];
+      if(!s) return;
+      showConfirm(`${s.name}さん(担№${no})の「作業中」記録を強制的に削除します。終了忘れの後始末用です。実績としては記録されません。よろしいですか？`, async ()=>{
+        await sbDelete('active_sessions', `site_code=eq.${encodeURIComponent(appSettings.siteCode)}&worker_no=eq.${no}`);
+        delete sessions[no];
+        renderWorkingList();
+      });
+    });
+  });
 }
 function tickTimers(){
   document.querySelectorAll('.wk-timer').forEach(el=>{
@@ -1207,46 +1185,6 @@ $('resultOverlay').addEventListener('click', ()=>{
   $('resultOverlay').classList.remove('show');
 });
 
-// ---------- admin ----------
-let reportDate = null;
-let reportLog = [];
-function fmtDateHeading(dateStr){
-  const [y,m,d] = dateStr.split('-');
-  return `${parseInt(m,10)}/${parseInt(d,10)}の実績ログ`;
-}
-async function loadReportLog(dateStr){
-  const siteCode = appSettings.siteCode;
-  if(!siteCode){ reportLog = []; return; }
-  const dayStart = dateStr + 'T00:00:00';
-  const dayEnd = dateStr + 'T23:59:59.999';
-  const rows = await sbSelect('work_log',
-    `site_code=eq.${encodeURIComponent(siteCode)}&start_at=gte.${dayStart}&start_at=lte.${dayEnd}&order=start_at.desc`);
-  reportLog = (rows||[]).map(r=>({
-    id: r.id, no: r.worker_no, name: r.worker_name, groupId: r.group_id, groupName: r.group_name,
-    courseNo: r.course_no, courseName: r.course_name, storeNo: r.store_no, count: r.count,
-    startISO: r.start_at, endISO: r.end_at, durationSec: r.duration_sec,
-    productivity: r.productivity, cancelled: r.cancelled
-  }));
-}
-$('adminBtn').addEventListener('click', async ()=>{
-  reportDate = todayKey();
-  $('reportDateInput').value = reportDate;
-  $('adminHeading').textContent = fmtDateHeading(reportDate);
-  $('logBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">読み込み中…</td></tr>';
-  $('adminOverlay').classList.add('show');
-  await loadReportLog(reportDate);
-  renderLogTable();
-});
-$('reportDateInput').addEventListener('change', async (e)=>{
-  reportDate = e.target.value;
-  if(!reportDate) return;
-  $('adminHeading').textContent = fmtDateHeading(reportDate);
-  $('logBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">読み込み中…</td></tr>';
-  await loadReportLog(reportDate);
-  renderLogTable();
-});
-$('adminClose').addEventListener('click', ()=> $('adminOverlay').classList.remove('show'));
-
 // ---------- progress dashboard (1便/2便 auto-split, no button needed) ----------
 function detectBins(courseNumbers){
   const uniq = [...new Set(courseNumbers)].sort((a,b)=>a-b);
@@ -1419,112 +1357,6 @@ $('progressBtn').addEventListener('click', ()=>{
 });
 $('progressClose').addEventListener('click', ()=> $('progressOverlay').classList.remove('show'));
 
-let expandedWorkers = new Set();
-function renderLogTable(){
-  const body = $('logBody');
-  if(reportLog.length===0){
-    body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:20px;">この日の記録はありません</td></tr>';
-    return;
-  }
-  const byWorker = {};
-  reportLog.forEach(r=>{
-    if(!byWorker[r.no]) byWorker[r.no] = {no:r.no, name:r.name, rows:[]};
-    byWorker[r.no].rows.push(r);
-  });
-  const workers = Object.values(byWorker).sort((a,b)=>{
-    const aLatest = Math.max(...a.rows.map(r=>new Date(r.startISO).getTime()));
-    const bLatest = Math.max(...b.rows.map(r=>new Date(r.startISO).getTime()));
-    return bLatest - aLatest;
-  });
-
-  body.innerHTML = workers.map(w=>{
-    const valid = w.rows.filter(r=>!r.cancelled);
-    const totalPieces = valid.reduce((s,r)=>s+r.count,0);
-    const avgProd = valid.length ? Math.round(valid.reduce((s,r)=>s+r.productivity,0)/valid.length) : 0;
-    const isOpen = expandedWorkers.has(String(w.no));
-    const rowsSorted = [...w.rows].sort((a,b)=> new Date(b.startISO)-new Date(a.startISO));
-    const summaryRow = `
-      <tr class="worker-summary-row" data-wno="${w.no}">
-        <td colspan="11">
-          <div class="worker-summary-inner">
-            <div class="wsi-left"><span class="wsi-arrow">${isOpen?'▼':'▶'}</span> 担№${w.no} ・ ${escapeHtml(w.name)}</div>
-            <div class="wsi-right">${w.rows.length}件 ・ ${totalPieces}個口 ・ 平均${avgProd}/h</div>
-          </div>
-        </td>
-      </tr>`;
-    const detailRows = rowsSorted.map(r=>`
-      <tr class="worker-detail-row ${r.cancelled?'cancelled':''}" data-wno="${w.no}" style="${isOpen?'':'display:none;'}">
-        <td>${r.no}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.groupName||'-')}</td><td>${escapeHtml(r.courseName)}</td>
-        <td>${r.storeNo}</td><td>${r.count}</td>
-        <td>${fmtTimeShort(r.startISO)}</td><td>${fmtTimeShort(r.endISO)}</td>
-        <td>${fmtDuration(r.durationSec)}</td><td>${r.cancelled ? '取消' : r.productivity}</td>
-        <td><button class="log-del-btn" data-id="${r.id}">削除</button></td>
-      </tr>`).join('');
-    return summaryRow + detailRows;
-  }).join('');
-
-  body.querySelectorAll('.worker-summary-row').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const wno = tr.getAttribute('data-wno');
-      if(expandedWorkers.has(wno)) expandedWorkers.delete(wno); else expandedWorkers.add(wno);
-      renderLogTable();
-    });
-  });
-  body.querySelectorAll('.log-del-btn').forEach(btn=>{
-    btn.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      const id = btn.getAttribute('data-id');
-      const row = reportLog.find(r=>String(r.id)===id);
-      if(!row) return;
-      showConfirm(`${row.name}さん(担№${row.no}) ${row.courseName}/店${row.storeNo}・${row.count}個口 の記録を削除します。テスト入力の削除用です。よろしいですか？`, async ()=>{
-        await sbDelete('work_log', `id=eq.${id}`);
-        reportLog = reportLog.filter(r=>String(r.id)!==id);
-        renderLogTable();
-        if(reportDate === todayKey()) await refreshFromServer();
-      });
-    });
-  });
-}
-$('exportBtn').addEventListener('click', ()=>{
-  const header = ['担当者№','氏名','作業グループ','コース','店№','個口数','開始','終了','作業時間(秒)','生産性/h','取消'];
-  const rows = reportLog.map(r=>[
-    r.no, r.name, r.groupName||'', r.courseName, r.storeNo, r.count,
-    r.startISO, r.endISO, Math.round(r.durationSec), r.productivity, r.cancelled?'1':'0'
-  ]);
-  const csv = [header, ...rows].map(row => row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `作業実績_${reportDate}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-});
-
-$('exportXlsxBtn').addEventListener('click', ()=>{
-  const header = ['担当者№','コース','個口数','開始','終了','作業時間','秒'];
-  const aoa = [header];
-  const sorted = [...reportLog].sort((a,b)=> new Date(a.startISO)-new Date(b.startISO));
-  sorted.forEach(r=>{
-    const codeStr = String(r.courseNo) + String(r.storeNo).padStart(2,'0');
-    aoa.push([r.no, codeStr, r.count, new Date(r.startISO), new Date(r.endISO), '', '']);
-  });
-  const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates:true});
-  // force コース(B) column to text, matching original Data sheet cell type
-  for(let i=2;i<=aoa.length;i++){
-    const addr = 'B'+i;
-    if(ws[addr]) ws[addr].t = 's';
-  }
-  // date formatting to match original "yyyy/m/d h:mm"
-  for(let i=2;i<=aoa.length;i++){
-    ['D','E'].forEach(col=>{
-      const addr = col+i;
-      if(ws[addr]) ws[addr].z = 'yyyy/m/d h:mm';
-    });
-  }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Data');
-  XLSX.writeFile(wb, `作業時間測定_v20_Data_${reportDate}.xlsx`);
-});
 
 // ---------- roster import (logi_meter CSV) ----------
 let rosterMeta = null;   // {count, updatedAt, source}
