@@ -2100,30 +2100,41 @@ function renderOrderManageList(){
     return;
   }
   const filterText = $('orderManageFilter').value.trim();
-  let entries = Object.values(orderMap).sort((a,b)=> a.courseNo-b.courseNo || a.storeNo-b.storeNo);
-  if(filterText) entries = entries.filter(e => String(e.courseNo).includes(filterText));
-  if(entries.length === 0){
+
+  const byCourse = {};
+  Object.values(orderMap).forEach(e=>{
+    if(!byCourse[e.courseNo]) byCourse[e.courseNo] = {courseNo: e.courseNo, stores: 0, lots: 0};
+    byCourse[e.courseNo].stores += 1;
+    byCourse[e.courseNo].lots += e.lots;
+  });
+  let courses = Object.values(byCourse).sort((a,b)=> a.courseNo-b.courseNo);
+  if(filterText) courses = courses.filter(c => String(c.courseNo).includes(filterText));
+  if(courses.length === 0){
     list.innerHTML = '<div class="working-empty">該当するコースがありません</div>';
     return;
   }
-  list.innerHTML = entries.map(e => `
-    <div class="pick-store-item" data-course="${e.courseNo}" data-store="${e.storeNo}">
-      <div class="psi-code">${e.courseNo} － ${e.storeNo}</div>
-      <div class="psi-lots">${e.lots}個口予定</div>
-      <button class="wk-force-del" data-course="${e.courseNo}" data-store="${e.storeNo}" title="この予定を削除">×</button>
+  list.innerHTML = courses.map(c => `
+    <div class="pick-store-item" data-course="${c.courseNo}">
+      <div class="psi-code">コース${c.courseNo}</div>
+      <div class="psi-lots">${c.stores}件・${c.lots}個口予定</div>
+      <button class="wk-force-del" data-course="${c.courseNo}" title="このコースを削除">×</button>
     </div>`).join('');
   list.querySelectorAll('.wk-force-del').forEach(btn=>{
     btn.addEventListener('click', (ev)=>{
       ev.stopPropagation();
       const courseNo = parseInt(btn.getAttribute('data-course'), 10);
-      const storeNo = parseInt(btn.getAttribute('data-store'), 10);
-      showConfirm(`コース${courseNo}－店${storeNo} の予定を削除します。前日までに終わっている分の後始末用です。よろしいですか？`, async ()=>{
+      const c = byCourse[courseNo];
+      showConfirm(`コース${courseNo}(${c.stores}件・${c.lots}個口予定)の予定をまとめて削除します。前日までに終わっている分の後始末用です。よろしいですか？`, async ()=>{
         const siteCode = appSettings.siteCode;
         const g2 = resolveActiveGroup();
         await sbDelete('orders',
-          `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${todayKey()}&group_id=eq.${encodeURIComponent(g2.id)}&course_no=eq.${courseNo}&store_no=eq.${storeNo}`);
+          `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${todayKey()}&group_id=eq.${encodeURIComponent(g2.id)}&course_no=eq.${courseNo}`);
         const orderData = ORDER_DATA[g2.id];
-        if(orderData) delete orderData.map[courseNo+'-'+storeNo];
+        if(orderData){
+          Object.keys(orderData.map).forEach(key=>{
+            if(orderData.map[key].courseNo === courseNo) delete orderData.map[key];
+          });
+        }
         renderOrderManageList();
         if(step === 'pickStore') renderPickStoreList();
       });
