@@ -1305,9 +1305,7 @@ function computeGroupBinResults(g){
   const doneEntries = todayLog.filter(r => !r.cancelled && r.groupId === g.id);
   const openSessionsInGroup = Object.values(sessions).filter(s => s.groupId === g.id);
 
-  const fromTable = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo));
-  const bins = fromTable || detectBins(planEntries.map(e=>e.courseNo));
-  const debugSource = fromTable ? 'コース表' : '推測(番号の隙間)';
+  const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo)) || detectBins(planEntries.map(e=>e.courseNo));
   const now = new Date();
   let prevEnd = null;
   return bins.map(bin=>{
@@ -1315,9 +1313,7 @@ function computeGroupBinResults(g){
     const prod = currentProductivityFor(data, g.expectedProductivity, now);
     const endResult = computeEndTime(data, prod, prevEnd, g.expectedProductivity, g.expectedBreakMinutes, now);
     prevEnd = endResult ? endResult.time : prevEnd;
-    const sampleCourses = bin.courseSet ? [...bin.courseSet].sort((a,b)=>a-b).slice(0,5).join(',') : `${bin.min}-${bin.max}`;
-    return {...data, prod, endResult, debugSource, debugPlanTotal: planEntries.length,
-            debugBinSize: bin.courseSet ? bin.courseSet.size : `${bin.min}-${bin.max}`, debugSample: sampleCourses};
+    return {...data, prod, endResult};
   });
 }
 
@@ -1336,7 +1332,6 @@ function renderBinCards(results){
         <div class="bin-stat"><div class="n">${endLabel}</div><div class="l">終了予測</div></div>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-top:10px;">${r.started ? `開始 ${fmtTimeShort(r.binStart.toISOString())} ・ 現在の生産性 約${Math.round(r.prod)}個/人時` : '未開始(想定生産性で予測)'}</div>
-      <div style="font-size:10px;color:#B9A98A;margin-top:6px;">判定:${r.debugSource} ｜ 全体件数:${r.debugPlanTotal} ｜ この便のコース数:${r.debugBinSize} ｜ 例:${r.debugSample}</div>
     </div>`;
   }).join('') + `</div>`;
 }
@@ -1779,7 +1774,8 @@ $('settingsSave').addEventListener('click', async ()=>{
 
 // ---------- order data (PKDATA.CSV) ----------
 let ORDER_DATA = {};   // { [groupId]: {map:{"course-store":{lots,courseNo,storeNo}}, loaded, updatedAt} }
-let pendingOrderImport = null;   // { [groupId]: map }
+let pendingOrderImport = null;   // { [groupId]: map, __workDate: 'YYYY-MM-DD'|null }
+let lastImportedFileWorkDate = null;
 let pendingOrderFolder = null;
 
 function setOrderStatus(text, color){
@@ -1828,6 +1824,31 @@ function decodePkCsv(buffer){
 }
 function parsePkRows(text){
   return Papa.parse(text, {header:false, skipEmptyLines:true}).data;
+}
+function extractFileWorkDate(rows){
+  // PKDATA.CSV's own date field (row[0], format YYYYMMDD) is the day the file was
+  // CREATED, not the day it's meant for. Confirmed: actual work date = that date minus 1 day.
+  // Some rows (courses not in the course table) carry a sentinel value like "99999999"
+  // instead of a real date, so pick the most common *valid calendar date* across all
+  // rows rather than just trusting the first row.
+  const counts = {};
+  rows.forEach(r=>{
+    if(!r || !r[0]) return;
+    const s = String(r[0]);
+    if(!/^\d{8}$/.test(s)) return;
+    const y = parseInt(s.slice(0,4),10), m = parseInt(s.slice(4,6),10), d = parseInt(s.slice(6,8),10);
+    if(m < 1 || m > 12 || d < 1 || d > 31) return; // rejects sentinels like 99999999
+    counts[s] = (counts[s]||0) + 1;
+  });
+  const entries = Object.entries(counts);
+  if(entries.length === 0) return null;
+  entries.sort((a,b)=> b[1]-a[1]); // most frequent real date wins
+  const s = entries[0][0];
+  const y = parseInt(s.slice(0,4),10), m = parseInt(s.slice(4,6),10), d = parseInt(s.slice(6,8),10);
+  const createdDate = new Date(y, m-1, d);
+  const workDate = new Date(createdDate.getTime() - 24*3600*1000);
+  const pad = n=>String(n).padStart(2,'0');
+  return `${workDate.getFullYear()}-${pad(workDate.getMonth()+1)}-${pad(workDate.getDate())}`;
 }
 function aggregateForGroup(rows, ranges){
   const map = {};
@@ -2004,9 +2025,19 @@ $('orderFileInput').addEventListener('change', async (e)=>{
   const buffer = await file.arrayBuffer();
   const text = decodePkCsv(buffer);
   const rows = parsePkRows(text);
+  const fileWorkDate = extractFileWorkDate(rows);
   const targetGroups = (appSettings.groups||[]).filter(g => g.folder === pendingOrderFolder);
-  pendingOrderImport = {};
+  pendingOrderImport = { __workDate: fileWorkDate };
   const lines = [`PKDATA.CSV(${pendingOrderFolder})を読み込みました。\n`];
+  if(fileWorkDate){
+    if(fileWorkDate === todayKey()){
+      lines.push(`✅ このファイルの対象作業日: ${fileWorkDate}(今日と一致)\n`);
+    } else {
+      lines.push(`⚠️ このファイルの対象作業日: ${fileWorkDate}(今日 ${todayKey()} とは違います！日付を確認してください)\n`);
+    }
+  } else {
+    lines.push(`⚠️ ファイルから対象日を読み取れませんでした。ファイルの中身を確認してください。\n`);
+  }
   targetGroups.forEach(g=>{
     const {map, inRange, outOfRange, badRows, notInCourseTable, totalRows} = aggregateForGroup(rows, g.ranges);
     pendingOrderImport[g.id] = map;
@@ -2027,9 +2058,11 @@ $('orderApply').addEventListener('click', async ()=>{
   const updatedAt = new Date().toISOString();
   const siteCode = appSettings.siteCode;
   const workDate = todayKey();
+  const fileWorkDate = pendingOrderImport.__workDate;
 
   // replace this date's rows for each affected group, then bulk-insert the fresh aggregation
   for(const gid of Object.keys(pendingOrderImport)){
+    if(gid === '__workDate') continue;
     await sbDelete('orders',
       `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${workDate}&group_id=eq.${encodeURIComponent(gid)}`);
     const rows = Object.values(pendingOrderImport[gid]).map(v => ({
@@ -2040,9 +2073,14 @@ $('orderApply').addEventListener('click', async ()=>{
     ORDER_DATA[gid] = {map: pendingOrderImport[gid], loaded: true, updatedAt};
   }
 
+  lastImportedFileWorkDate = fileWorkDate || null;
   const loadedCount = Object.values(ORDER_DATA).filter(d=>d.loaded).length;
   const total = (appSettings.groups||[]).length;
-  setOrderStatus(loadedCount>=total ? `受注:取込済(${total}グループ)` : `受注:一部取込(${loadedCount}/${total}グループ)`, loadedCount>=total?'var(--green)':'var(--amber-deep)');
+  const dateNote = fileWorkDate ? ` ｜ ファイル対象日:${fileWorkDate}${fileWorkDate!==todayKey() ? '⚠️' : ''}` : '';
+  setOrderStatus(
+    (loadedCount>=total ? `受注:取込済(${total}グループ)` : `受注:一部取込(${loadedCount}/${total}グループ)`) + dateNote,
+    (fileWorkDate && fileWorkDate!==todayKey()) ? 'var(--red)' : (loadedCount>=total?'var(--green)':'var(--amber-deep)')
+  );
   pendingOrderImport = null;
   $('orderOverlay').classList.remove('show');
 });
