@@ -662,9 +662,24 @@ let step = 'worker';     // worker | course | store | count | closing
 let buffer = '';
 let ctx = {};            // in-progress entry context
 
+let lastKnownDateKey = null;
 async function refreshFromServer(){
   const siteCode = appSettings.siteCode;
   if(!siteCode) return;
+
+  // if the calendar day has rolled over while this tab/PWA stayed open in the
+  // background, day-scoped caches (orders, roster, course table) would otherwise
+  // keep showing yesterday's data until something forces a reload. Catch that here.
+  const currentDateKey = todayKey();
+  if(lastKnownDateKey === null){
+    lastKnownDateKey = currentDateKey;
+  } else if(lastKnownDateKey !== currentDateKey){
+    lastKnownDateKey = currentDateKey;
+    resetToWorker();
+    await loadRoster();
+    await loadCourseMaster();
+    await loadOrders();
+  }
 
   const sessRows = await sbSelect('active_sessions', `site_code=eq.${encodeURIComponent(siteCode)}`);
   if(sessRows){
