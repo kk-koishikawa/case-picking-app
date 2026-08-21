@@ -1216,27 +1216,12 @@ $('resultOverlay').addEventListener('click', ()=>{
 });
 
 // ---------- progress dashboard (1便/2便 auto-split, no button needed) ----------
-function detectBins(courseNumbers){
-  const uniq = [...new Set(courseNumbers)].sort((a,b)=>a-b);
-  if(uniq.length <= 1) return [{label:'全体', min:uniq[0]||0, max:uniq[0]||0}];
-  const gaps = [];
-  for(let i=1;i<uniq.length;i++) gaps.push({idx:i, gap:uniq[i]-uniq[i-1]});
-  const maxGapEntry = gaps.reduce((a,b)=> b.gap>a.gap?b:a, gaps[0]);
-  const avgGap = gaps.reduce((s,g)=>s+g.gap,0)/gaps.length;
-  if(maxGapEntry.gap > avgGap*3 && maxGapEntry.gap > 5){
-    const splitIdx = maxGapEntry.idx;
-    return [
-      {label:'1便', min:uniq[0], max:uniq[splitIdx-1]},
-      {label:'2便', min:uniq[splitIdx], max:uniq[uniq.length-1]}
-    ];
-  }
-  return [{label:'全体', min:uniq[0], max:uniq[uniq.length-1]}];
-}
 function detectBinsFromCourseTable(courseNumbers){
   const uniq = [...new Set(courseNumbers)];
   if(uniq.length === 0) return null;
-  // only trust the course table's 便 assignment if it covers every course seen today;
-  // otherwise fall back to the numeric-gap heuristic so an unmapped course never gets dropped
+  // 便の判定はコース表からのみ行う。表に無いコースが混ざっていれば判定不能として null を返す
+  // (そのコースはそもそも受注データ取込時にコース表外として除外されているはずなので、
+  //  通常はここに来ない。来た場合はコース表が古い/未更新のサイン)
   if(uniq.some(c => courseBinMap[c] === undefined)) return null;
   const byBin = {};
   uniq.forEach(c=>{
@@ -1320,7 +1305,8 @@ function computeGroupBinResults(g){
   const doneEntries = todayLog.filter(r => !r.cancelled && r.groupId === g.id);
   const openSessionsInGroup = Object.values(sessions).filter(s => s.groupId === g.id);
 
-  const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo)) || detectBins(planEntries.map(e=>e.courseNo));
+  const bins = detectBinsFromCourseTable(planEntries.map(e=>e.courseNo));
+  if(!bins) return 'no_course_table';
   const now = new Date();
   let prevEnd = null;
   return bins.map(bin=>{
@@ -1372,8 +1358,11 @@ function renderProgress(){
     const results = computeGroupBinResults(g);
     const heading = progressSelectedGroupId === null
       ? `<h3 style="margin:18px 2px 8px;font-size:15px;">${escapeHtml(g.name)}</h3>` : '';
-    if(!results){
+    if(results === null){
       return heading + '<p style="padding:0 2px 10px;color:var(--muted);font-size:13px;">本日の受注データが未取込です。</p>';
+    }
+    if(results === 'no_course_table'){
+      return heading + '<p style="padding:0 2px 10px;color:var(--red);font-size:13px;">⚠ コース表に無いコースが含まれているため、便を判定できません。⚙設定からコース表を確認・更新してください。</p>';
     }
     return heading + renderBinCards(results);
   });
@@ -1885,9 +1874,10 @@ function aggregateForGroup(rows, ranges){
     const lots = bara / lotSize;
     const key = courseNo + '-' + storeNo;
     if(!map[key]){
-      // 作業順はコース表があればそこから(コース単位＋店番で並びを安定させる)、無ければファイル内の出現順にフォールバック
+      // 作業順は「コース表のコース単位の順番」を上位、「ファイル内での実際の出現順」を
+      // コース内の店の並びに使う(コース表には店ごとの並びまでは無いため)
       const seq = hasCourseTable && courseSeqMap[courseNo] !== undefined
-        ? courseSeqMap[courseNo] * 1000 + storeNo
+        ? courseSeqMap[courseNo] * 100000 + idx
         : idx;
       map[key] = {courseNo, storeNo, lots: 0, seq};
     }
