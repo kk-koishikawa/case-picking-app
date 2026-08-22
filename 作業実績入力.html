@@ -300,19 +300,31 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
 }
 .admin-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:18px 22px;border-bottom:1px solid var(--line);}
 .admin-head h2{margin:0;font-size:19px;}
-.admin-body{overflow-y:auto;padding:0 22px 22px;}
+.admin-body{overflow-y:auto;padding:0 22px 22px;flex:1;min-height:0;}
+table.log{width:100%;border-collapse:collapse;font-size:13px;}
+table.log th{
+  text-align:left;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.04em;
+  padding:6px 8px;border-bottom:2px solid var(--ink);position:sticky;top:0;background:var(--panel);
+}
+table.log td{padding:8px;border-bottom:1px solid var(--line);}
+table.log tr.cancelled td{color:var(--muted);text-decoration:line-through;}
 .close-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
 .export-btn{background:var(--steel);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;}
 
-.progress-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;padding:4px 2px;}
-.bin-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;}
-.bin-card h3{margin:0 0 10px;font-size:18px;}
-.bin-progress-bar{height:10px;background:#EEEAE1;border-radius:5px;overflow:hidden;margin-bottom:14px;}
-.bin-progress-fill{height:100%;background:var(--amber);transition:width .3s;}
-.bin-stats{display:flex;gap:10px;}
-.bin-stat{flex:1;text-align:center;background:#F7F5F0;border-radius:8px;padding:10px 6px;}
-.bin-stat .n{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;}
-.bin-stat .l{font-size:11px;color:var(--muted);margin-top:2px;}
+.qty-summary-compact{
+  background:var(--ink);color:#fff;border-radius:8px;padding:8px 10px;margin:0 0 6px;
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:11px;
+}
+.qsc-total{font-family:'Space Mono',monospace;font-weight:700;color:var(--amber);font-size:13px;flex-shrink:0;}
+.qsc-breakdown{color:#D7DCE2;}
+.bin-compact-wrap{display:flex;flex-direction:column;gap:4px;}
+.bin-compact-row{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  background:#F7F5F0;border-radius:6px;padding:5px 8px;font-size:10.5px;
+}
+.bcr-label{font-weight:700;color:var(--steel);flex-shrink:0;}
+.bcr-stat{color:var(--ink);font-family:'Space Mono',monospace;}
+.numpad-key{min-height:52px;font-size:20px;}
 
 @media (max-width:820px){
   main{flex-direction:column;}
@@ -331,7 +343,7 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
       <span class="conn" id="orderStatus" style="min-width:140px;"><span class="dot" style="background:var(--muted);"></span><span id="orderStatusText">受注:未取込</span></span>
       <button class="hbtn" id="orderManageBtn">受注データ確認</button>
       <input type="file" id="orderFileInput" accept=".csv" style="display:none;">
-      <button class="hbtn" id="progressBtn">📊 進捗</button>
+      <button class="hbtn" id="historyBtn">履歴</button>
       <button class="hbtn" id="settingsBtn">⚙ 設定</button>
       <input type="file" id="rosterFileInput" accept=".csv" style="display:none;">
       <input type="file" id="courseMasterFileInput" accept=".xlsx" style="display:none;">
@@ -385,20 +397,56 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
 
     <div class="status-panel">
       <div class="card working-card">
-        <div class="panel-title">現在作業中</div>
+        <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>現在作業中</span>
+          <span id="workingCount" style="font-family:'Space Mono',monospace;font-size:15px;color:var(--amber-deep);">0人</span>
+        </div>
         <div class="working-list" id="workingList"></div>
       </div>
-      <div class="card">
+      <div class="card" style="flex-shrink:0;">
         <div class="panel-title">本日の実績</div>
-        <div class="summary-row">
-          <div class="stat"><div class="n" id="statCount">0</div><div class="l">件数</div></div>
-          <div class="stat"><div class="n" id="statPieces">0</div><div class="l">総個口数</div></div>
-          <div class="stat"><div class="n" id="statAvg">0</div><div class="l">平均生産性/h</div></div>
-        </div>
-        <div id="groupBreakdown" style="font-size:12px;color:var(--muted);padding:0 18px 14px;"></div>
+        <div id="sidebarProgress" style="padding:0 12px 10px;"></div>
       </div>
     </div>
   </main>
+
+<div class="overlay admin-overlay" id="historyOverlay">
+  <div class="admin-card">
+    <div class="admin-head">
+      <h2>履歴</h2>
+      <button class="close-x" id="historyClose">&times;</button>
+    </div>
+    <div style="padding:16px 22px 0;flex-shrink:0;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">今日の実績を全件表示しています。コース№か担当者№で絞り込めます(タップすると専用のテンキーが出ます)。</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <input type="text" readonly id="historyCourseFilter" placeholder="コース№で検索" style="flex:1;min-width:140px;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;background:#fff;cursor:pointer;">
+        <input type="text" readonly id="historyWorkerFilter" placeholder="担当者№で検索" style="flex:1;min-width:140px;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;background:#fff;cursor:pointer;">
+      </div>
+    </div>
+    <div class="admin-body" style="-webkit-overflow-scrolling:touch;">
+      <table class="log">
+        <thead><tr>
+          <th>コース－店</th><th>担当者</th>
+        </tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="historyNumpadOverlay" style="z-index:60;">
+  <div class="confirm-card" style="max-width:280px;padding:18px;">
+    <div id="historyNumpadLabel" style="font-size:12px;color:var(--muted);margin-bottom:8px;"></div>
+    <div id="historyNumpadDisplay" style="font-family:'Space Mono',monospace;font-size:22px;text-align:center;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:14px;min-height:26px;background:#F7F5F0;"></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+      <div class="key numpad-key" data-k="1">1</div><div class="key numpad-key" data-k="2">2</div><div class="key numpad-key" data-k="3">3</div>
+      <div class="key numpad-key" data-k="4">4</div><div class="key numpad-key" data-k="5">5</div><div class="key numpad-key" data-k="6">6</div>
+      <div class="key numpad-key" data-k="7">7</div><div class="key numpad-key" data-k="8">8</div><div class="key numpad-key" data-k="9">9</div>
+      <div class="key fn numpad-key" data-k="clear">クリア</div><div class="key numpad-key" data-k="0">0</div><div class="key fn numpad-key" data-k="back">⌫</div>
+    </div>
+    <button class="yes" id="historyNumpadDone" style="width:100%;">閉じる</button>
+  </div>
+</div>
 </div>
 
 <div class="overlay" id="resultOverlay">
@@ -503,7 +551,7 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
     </div>
     <div class="admin-body">
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">前日までに完了済みのコース・店など、不要になった予定だけを個別に削除できます。削除しても実績には影響しません。</div>
-      <input type="text" id="orderManageFilter" placeholder="コース№で絞り込み" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;margin-bottom:14px;">
+      <input type="tel" inputmode="numeric" pattern="[0-9]*" id="orderManageFilter" placeholder="コース№で絞り込み" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;margin-bottom:14px;">
       <div id="orderManageList" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
     </div>
   </div>
@@ -536,17 +584,6 @@ main{flex:1;display:flex;gap:16px;padding:16px;min-height:0;}
       <button class="no" id="confirmNo">キャンセル</button>
       <button class="yes" id="confirmYes">確認しました</button>
     </div>
-  </div>
-</div>
-
-<div class="overlay admin-overlay" id="progressOverlay">
-  <div class="admin-card">
-    <div class="admin-head">
-      <h2>進捗ダッシュボード</h2>
-      <button class="close-x" id="progressClose">&times;</button>
-    </div>
-    <div id="progressGroupTabs" style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 0;"></div>
-    <div class="admin-body" id="progressBody"></div>
   </div>
 </div>
 
@@ -598,8 +635,8 @@ function speak(text){
 function vibrate(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} }
 
 // ---------- Supabase connection ----------
-const SUPABASE_URL = 'https://pakdabwtszvlzzflfeci.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_VkfxCOHClg-MxPgLvVSCww_VEGJX5fY';
+const SUPABASE_URL = 'https://nhkbfzzysonkqqgmvaao.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_4_LZAPz9gceWwdgT_OGHYQ_EWX4DWvT';
 const SB_HEADERS = {
   'apikey': SUPABASE_KEY,
   'Authorization': 'Bearer ' + SUPABASE_KEY,
@@ -707,9 +744,9 @@ async function refreshFromServer(){
   }
 
   renderWorkingList();
-  renderSummary();
-  if($('progressOverlay').classList.contains('show')) renderProgress();
+  await renderSidebarProgress();
   if(step === 'pickStore') renderPickStoreList();
+  if($('historyOverlay').classList.contains('show')) renderHistoryTable();
 }
 
 // ---------- rendering ----------
@@ -718,6 +755,7 @@ function renderClock(){ $('clock').textContent = fmtClock(); }
 function renderWorkingList(){
   const list = $('workingList');
   const entries = Object.values(sessions);
+  $('workingCount').textContent = entries.length + '人';
   if(entries.length === 0){
     list.innerHTML = '<div class="working-empty">現在作業中の担当者はいません</div>';
     return;
@@ -765,27 +803,6 @@ function tickTimers(){
     const start = new Date(el.getAttribute('data-start')).getTime();
     el.textContent = fmtDuration((Date.now()-start)/1000);
   });
-}
-function renderSummary(){
-  const valid = todayLog.filter(r=>!r.cancelled);
-  $('statCount').textContent = valid.length;
-  $('statPieces').textContent = valid.reduce((a,r)=>a+r.count,0);
-  const avg = valid.length ? Math.round(valid.reduce((a,r)=>a+r.productivity,0)/valid.length) : 0;
-  $('statAvg').textContent = avg;
-
-  const byGroup = {};
-  valid.forEach(r=>{
-    const g = r.groupName || '(グループ未設定)';
-    if(!byGroup[g]) byGroup[g] = {count:0, pieces:0};
-    byGroup[g].count++; byGroup[g].pieces += r.count;
-  });
-  const keys = Object.keys(byGroup);
-  const breakdown = $('groupBreakdown');
-  if(breakdown){
-    breakdown.textContent = keys.length > 1
-      ? keys.map(g=>`${g}: ${byGroup[g].count}件・${byGroup[g].pieces}個`).join(' ｜ ')
-      : '';
-  }
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1142,7 +1159,7 @@ $('finishJobBtn').addEventListener('click', async ()=>{
   delete sessions[ctx.no];
   const logRec = {...s, endISO, durationSec, productivity, cancelled:false};
   todayLog.unshift(logRec);
-  renderWorkingList(); renderSummary();
+  renderWorkingList();
 
   $('resultType').textContent = '作業終了';
   $('resultName').textContent = s.name;
@@ -1160,6 +1177,7 @@ $('finishJobBtn').addEventListener('click', async ()=>{
     start_at: s.startISO, end_at: endISO, duration_sec: Math.round(durationSec),
     productivity, cancelled: false
   }]);
+  await renderSidebarProgress();
   resetToWorker();
 });
 
@@ -1171,7 +1189,7 @@ $('cancelJobBtn').addEventListener('click', async ()=>{
     const durationSec = (new Date(endISO)-new Date(s.startISO))/1000;
     delete sessions[ctx.no];
     todayLog.unshift({...s, endISO, durationSec, productivity:0, cancelled:true, count:0});
-    renderWorkingList(); renderSummary();
+    renderWorkingList();
     speak('作業を取り消しました');
     await sbDelete('active_sessions', `site_code=eq.${encodeURIComponent(appSettings.siteCode)}&worker_no=eq.${ctx.no}`);
     await sbInsert('work_log', [{
@@ -1181,6 +1199,7 @@ $('cancelJobBtn').addEventListener('click', async ()=>{
       start_at: s.startISO, end_at: endISO, duration_sec: Math.round(durationSec),
       productivity: 0, cancelled: true
     }]);
+    await renderSidebarProgress();
     resetToWorker();
   });
 });
@@ -1266,38 +1285,19 @@ function currentProductivityFor(data, expectedProd, now){
 function computeEndTime(data, currentProd, prevBinEnd, expectedProd, expectedBreak, now){
   if(data.volumeTotal > 0 && data.remaining <= 0){
     const endTimes = data.done.map(e=>new Date(e.endISO).getTime());
-    return {time: new Date(Math.max(...endTimes)), actual:true};
+    return {time: new Date(Math.max(...endTimes)), actual:true, branch:'done'};
   }
   if(data.started){
     const hoursLeft = currentProd > 0 ? data.remaining/currentProd : 0;
-    return {time: new Date(now.getTime() + hoursLeft*3600000), actual:false};
+    return {time: new Date(now.getTime() + hoursLeft*3600000), actual:false, branch:'started', hoursLeft, currentProd};
   }
   if(prevBinEnd){
     const assumedStart = new Date(prevBinEnd.getTime() + expectedBreak*60000);
     const hoursLeft = expectedProd > 0 ? data.volumeTotal/expectedProd : 0;
-    return {time: new Date(assumedStart.getTime() + hoursLeft*3600000), actual:false};
+    return {time: new Date(assumedStart.getTime() + hoursLeft*3600000), actual:false, branch:'prevBinEnd', hoursLeft, expectedProd, expectedBreak, prevBinEnd, assumedStart};
   }
   return null;
 }
-let progressSelectedGroupId = null; // null = "all groups" (office view)
-
-function renderProgressTabs(){
-  const wrap = $('progressGroupTabs');
-  const groups = appSettings.groups || [];
-  if(groups.length <= 1){ wrap.innerHTML = ''; return; }
-  const tabs = [{id:null, name:'全グループ'}, ...groups.map(g=>({id:g.id, name:g.name}))];
-  wrap.innerHTML = tabs.map(t => `
-    <button class="settings-tab-btn${progressSelectedGroupId===t.id?' active':''}" data-gid="${t.id===null?'':t.id}" style="flex:none;padding:6px 14px;font-size:13px;">${escapeHtml(t.name)}</button>
-  `).join('');
-  wrap.querySelectorAll('button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const gid = btn.getAttribute('data-gid');
-      progressSelectedGroupId = gid === '' ? null : gid;
-      renderProgress();
-    });
-  });
-}
-
 function computeGroupBinResults(g){
   const orderData = ORDER_DATA[g.id];
   if(!orderData || !orderData.loaded || Object.keys(orderData.map).length === 0) return null;
@@ -1318,63 +1318,66 @@ function computeGroupBinResults(g){
   });
 }
 
+function fmtEndLabel(dateObj, actual){
+  const now = new Date();
+  const dayDiff = Math.round((new Date(dateObj.getFullYear(),dateObj.getMonth(),dateObj.getDate()) -
+                               new Date(now.getFullYear(),now.getMonth(),now.getDate())) / 86400000);
+  const timeStr = fmtTimeShort(dateObj.toISOString());
+  const dayTag = dayDiff === 0 ? '' : dayDiff === 1 ? '(翌日)' : dayDiff > 1 ? `(${dayDiff}日後)` : '(前日)';
+  return timeStr + dayTag + (actual ? '済' : '');
+}
 function renderBinCards(results){
-  return `<div class="progress-grid">` + results.map(r=>{
+  return `<div class="bin-compact-wrap">` + results.map(r=>{
     const cPct = r.courseTotal ? Math.round(r.courseDone/r.courseTotal*100) : 0;
     const vPct = r.volumeTotal ? Math.round(r.volumeDone/r.volumeTotal*100) : 0;
-    const endLabel = r.endResult ? (fmtTimeShort(r.endResult.time.toISOString()) + (r.endResult.actual?'(実績)':'')) : '--:--';
+    const endLabel = r.endResult ? fmtEndLabel(r.endResult.time, r.endResult.actual) : '--:--';
     return `
-    <div class="bin-card">
-      <h3>${escapeHtml(r.label)}</h3>
-      <div class="bin-progress-bar"><div class="bin-progress-fill" style="width:${vPct}%"></div></div>
-      <div class="bin-stats">
-        <div class="bin-stat"><div class="n">${r.courseDone}/${r.courseTotal}</div><div class="l">コース進捗(${cPct}%)</div></div>
-        <div class="bin-stat"><div class="n">${Math.round(r.volumeDone)}/${Math.round(r.volumeTotal)}</div><div class="l">物量進捗(${vPct}%)</div></div>
-        <div class="bin-stat"><div class="n">${endLabel}</div><div class="l">終了予測</div></div>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:10px;">${r.started ? `開始 ${fmtTimeShort(r.binStart.toISOString())} ・ 現在の生産性 約${Math.round(r.prod)}個/人時` : '未開始(想定生産性で予測)'}</div>
+    <div class="bin-compact-row">
+      <span class="bcr-label">${escapeHtml(r.label)}</span>
+      <span class="bcr-stat">コース ${r.courseDone}/${r.courseTotal}(${cPct}%)</span>
+      <span class="bcr-stat">数量 ${Math.round(r.volumeDone)}/${Math.round(r.volumeTotal)}(${vPct}%)</span>
+      <span class="bcr-stat">終了 ${endLabel}</span>
     </div>`;
   }).join('') + `</div>`;
 }
 
-function renderProgress(){
-  const body = $('progressBody');
-  renderProgressTabs();
+async function loadRangeSummaryForGroup(g){
+  const siteCode = appSettings.siteCode;
+  const rows = await sbSelect('order_range_summary',
+    `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${todayKey()}&group_id=eq.${encodeURIComponent(g.id)}`);
+  return rows || [];
+}
+function renderQtySummary(rangeRows){
+  if(!rangeRows || rangeRows.length === 0) return '';
+  const total = rangeRows.reduce((s,r)=>s+r.lots, 0);
+  const breakdown = rangeRows.map(r=>`${escapeHtml(r.range_name)} ${r.lots}`).join(' ／ ');
+  return `<div class="qty-summary-compact">
+    <span class="qsc-total">合計 ${total}</span>
+    <span class="qsc-breakdown">${breakdown}</span>
+  </div>`;
+}
 
-  let targetGroups;
-  if(progressSelectedGroupId === null){
-    targetGroups = appSettings.groups || [];
-  } else {
-    const g = (appSettings.groups||[]).find(x=>x.id===progressSelectedGroupId);
-    targetGroups = g ? [g] : [];
-  }
-
-  if(targetGroups.length === 0){
-    body.innerHTML = '<p style="padding:20px;color:var(--muted);">この拠点にはまだ作業グループがありません。</p>';
+async function renderSidebarProgress(){
+  const container = $('sidebarProgress');
+  const g = resolveActiveGroup();
+  if(!g){
+    container.innerHTML = '<p style="color:var(--muted);font-size:12px;">この端末の作業グループが未設定です。</p>';
     return;
   }
-
-  const sections = targetGroups.map(g=>{
-    const results = computeGroupBinResults(g);
-    const heading = progressSelectedGroupId === null
-      ? `<h3 style="margin:18px 2px 8px;font-size:15px;">${escapeHtml(g.name)}</h3>` : '';
-    if(results === null){
-      return heading + '<p style="padding:0 2px 10px;color:var(--muted);font-size:13px;">本日の受注データが未取込です。</p>';
-    }
-    if(results === 'no_course_table'){
-      return heading + '<p style="padding:0 2px 10px;color:var(--red);font-size:13px;">⚠ コース表に無いコースが含まれているため、便を判定できません。⚙設定からコース表を確認・更新してください。</p>';
-    }
-    return heading + renderBinCards(results);
-  });
-  body.innerHTML = sections.join('');
+  const rangeRows = await loadRangeSummaryForGroup(g);
+  if(!rangeRows || rangeRows.length === 0){
+    container.innerHTML = '<p style="color:var(--muted);font-size:12px;">本日の受注データが未取込です。</p>';
+    return;
+  }
+  let html = renderQtySummary(rangeRows);
+  const results = computeGroupBinResults(g);
+  if(results === 'no_course_table'){
+    html += '<p style="color:var(--red);font-size:12px;">⚠ コース表に無いコースが含まれているため、便を判定できません。</p>';
+  } else if(results){
+    html += renderBinCards(results);
+  }
+  container.innerHTML = html;
 }
-$('progressBtn').addEventListener('click', ()=>{
-  const active = resolveActiveGroup();
-  progressSelectedGroupId = active ? active.id : null;
-  renderProgress();
-  $('progressOverlay').classList.add('show');
-});
-$('progressClose').addEventListener('click', ()=> $('progressOverlay').classList.remove('show'));
 
 
 // ---------- roster import (logi_meter CSV) ----------
@@ -1486,10 +1489,11 @@ $('rosterApply').addEventListener('click', async ()=>{
 
 // ---------- app settings (拠点コード・作業グループ) ----------
 function defaultGroups(){
-  return [{id:'g1', name:'加食(ビール/ドリンク/ラーメン)', folder:'加食', ranges:[{min:500000,max:900000}], expectedProductivity:300, expectedBreakMinutes:60}];
+  return [{id:'g1', name:'加食(ビール/ドリンク/ラーメン)', folder:'加食', ranges:[{name:'加食', min:500000,max:900000}], expectedProductivity:300, expectedBreakMinutes:60}];
 }
 function migrateGroup(g){
-  const ranges = (Array.isArray(g.ranges) && g.ranges.length) ? g.ranges : [{min:g.shelfMin||0, max:g.shelfMax||0}];
+  const rawRanges = (Array.isArray(g.ranges) && g.ranges.length) ? g.ranges : [{min:g.shelfMin||0, max:g.shelfMax||0}];
+  const ranges = rawRanges.map(r => ({name: r.name || '', min: r.min, max: r.max}));
   return {
     id: g.id, name: g.name, folder: g.folder, ranges,
     expectedProductivity: Number.isFinite(g.expectedProductivity) ? g.expectedProductivity : (Number.isFinite(g.expected_productivity) ? g.expected_productivity : 300),
@@ -1501,7 +1505,7 @@ let appSettings = { siteCode:'', groups: defaultGroups() };
 // ---------- device-level group assignment (per iPad, not shared) ----------
 let deviceGroupId = null;
 // the group currently being viewed/edited in the settings panel for THIS device
-let editingGroup = {id:null, name:'', folder:'', ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
+let editingGroup = {id:null, name:'', folder:'', ranges:[{name:'', min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
 
 function resolveActiveGroup(){
   const groups = appSettings.groups || [];
@@ -1543,13 +1547,14 @@ async function loadSettings(){
 
 function initEditingGroupFromDevice(){
   const g = resolveActiveGroup();
-  editingGroup = g ? JSON.parse(JSON.stringify(g)) : {id:null, name:'', folder:'', ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
+  editingGroup = g ? JSON.parse(JSON.stringify(g)) : {id:null, name:'', folder:'', ranges:[{name:'',min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
 }
 
 function renderRangeList(){
   const wrap = $('deviceRangeList');
   wrap.innerHTML = editingGroup.ranges.map((r,i) => `
-    <div class="group-row" style="grid-template-columns:1fr 1fr auto;" data-idx="${i}">
+    <div class="group-row" style="grid-template-columns:1fr 1fr 1fr auto;" data-idx="${i}">
+      <input type="text" class="r-name" placeholder="名前(例:ドリンク)" value="${escapeHtml(r.name||'')}">
       <input type="number" class="r-min" placeholder="この番号 以上" value="${r.min}">
       <input type="number" class="r-max" placeholder="この番号 以下" value="${r.max}">
       <button class="rm" data-rmidx="${i}">&times;</button>
@@ -1560,7 +1565,7 @@ function renderRangeList(){
       syncRangesFromDom();
       const idx = parseInt(btn.getAttribute('data-rmidx'), 10);
       editingGroup.ranges.splice(idx, 1);
-      if(editingGroup.ranges.length === 0) editingGroup.ranges.push({min:0, max:0});
+      if(editingGroup.ranges.length === 0) editingGroup.ranges.push({name:'', min:0, max:0});
       renderRangeList();
     });
   });
@@ -1568,14 +1573,15 @@ function renderRangeList(){
 function syncRangesFromDom(){
   const rows = $('deviceRangeList').querySelectorAll('.group-row');
   rows.forEach((row,i)=>{
+    const name = row.querySelector('.r-name').value.trim();
     const min = parseInt(row.querySelector('.r-min').value, 10);
     const max = parseInt(row.querySelector('.r-max').value, 10);
-    editingGroup.ranges[i] = {min: Number.isInteger(min)?min:0, max: Number.isInteger(max)?max:0};
+    editingGroup.ranges[i] = {name, min: Number.isInteger(min)?min:0, max: Number.isInteger(max)?max:0};
   });
 }
 $('addRangeBtn').addEventListener('click', ()=>{
   syncRangesFromDom();
-  editingGroup.ranges.push({min:0, max:0});
+  editingGroup.ranges.push({name:'', min:0, max:0});
   renderRangeList();
 });
 
@@ -1652,7 +1658,7 @@ function switchSettingsTab(mode){
 }
 $('tabSelectBtn').addEventListener('click', ()=> switchSettingsTab('select'));
 $('tabCreateBtn').addEventListener('click', ()=>{
-  editingGroup = {id:null, name:'', folder: pendingNewCategoryFromJson || '', ranges:[{min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
+  editingGroup = {id:null, name:'', folder: pendingNewCategoryFromJson || '', ranges:[{name:'',min:0,max:0}], expectedProductivity:300, expectedBreakMinutes:60};
   switchSettingsTab('create');
 });
 
@@ -1719,6 +1725,7 @@ $('settingsSave').addEventListener('click', async ()=>{
     await loadRoster();
     await loadCourseMaster();
     await loadOrders();
+    await renderSidebarProgress();
     return;
   }
 
@@ -1773,6 +1780,7 @@ $('settingsSave').addEventListener('click', async ()=>{
   await loadRoster();  // site code may have just been set for the first time
   await loadCourseMaster();
   await loadOrders();  // group definition may have changed, refresh order status
+  await renderSidebarProgress();
 });
 
 
@@ -1856,6 +1864,7 @@ function extractFileWorkDate(rows){
 }
 function aggregateForGroup(rows, ranges){
   const map = {};
+  const rangeTotals = {}; // name -> lots
   let inRange = 0, outOfRange = 0, badRows = 0, notInCourseTable = 0;
   const hasCourseTable = validCourseSet.size > 0;
   rows.forEach((r, idx)=>{
@@ -1867,8 +1876,8 @@ function aggregateForGroup(rows, ranges){
     const bara = parseInt(r[11], 10);
     if(!Number.isInteger(courseNo) || !Number.isInteger(storeNo) || !Number.isInteger(shelf)){ badRows++; return; }
     if(hasCourseTable && !validCourseSet.has(courseNo)){ notInCourseTable++; return; }
-    const inAnyRange = ranges.some(rg => shelf >= rg.min && shelf <= rg.max);
-    if(!inAnyRange){ outOfRange++; return; }
+    const matchedRange = ranges.find(rg => shelf >= rg.min && shelf <= rg.max);
+    if(!matchedRange){ outOfRange++; return; }
     if(!lotSize){ badRows++; return; }
     inRange++;
     const lots = bara / lotSize;
@@ -1882,9 +1891,12 @@ function aggregateForGroup(rows, ranges){
       map[key] = {courseNo, storeNo, lots: 0, seq};
     }
     map[key].lots += lots;
+    const rangeName = matchedRange.name || '(名称未設定)';
+    rangeTotals[rangeName] = (rangeTotals[rangeName] || 0) + lots;
   });
   Object.values(map).forEach(v=> v.lots = Math.round(v.lots));
-  return {map, inRange, outOfRange, badRows, notInCourseTable, totalRows: rows.length};
+  Object.keys(rangeTotals).forEach(k=> rangeTotals[k] = Math.round(rangeTotals[k]));
+  return {map, rangeTotals, inRange, outOfRange, badRows, notInCourseTable, totalRows: rows.length};
 }
 
 // ---------- course master (拠点共通のコース表: 作業順・便・曜日別コース№) ----------
@@ -2044,11 +2056,13 @@ $('orderFileInput').addEventListener('change', async (e)=>{
     lines.push(`⚠️ ファイルから対象日を読み取れませんでした。ファイルの中身を確認してください。\n`);
   }
   targetGroups.forEach(g=>{
-    const {map, inRange, outOfRange, badRows, notInCourseTable, totalRows} = aggregateForGroup(rows, g.ranges);
-    pendingOrderImport[g.id] = map;
-    const rangeText = g.ranges.map(r=>r.min+'〜'+r.max).join(' / ');
+    const {map, rangeTotals, inRange, outOfRange, badRows, notInCourseTable, totalRows} = aggregateForGroup(rows, g.ranges);
+    pendingOrderImport[g.id] = {map, rangeTotals};
+    const rangeText = g.ranges.map(r=>`${r.name||'(名称未設定)'}:${r.min}〜${r.max}`).join(' / ');
     const courseNote = validCourseSet.size>0 ? ` / コース表外${notInCourseTable}行を除外` : ' / コース表未設定のため絞り込みなし';
-    lines.push(`【${g.name}】棚番${rangeText}: 対象${inRange}行 / 組み合わせ${Object.keys(map).length}件${courseNote}`);
+    const breakdownText = Object.entries(rangeTotals).map(([name,lots])=>`${name} ${lots}`).join(' ・ ');
+    const groupTotal = Object.values(rangeTotals).reduce((s,v)=>s+v,0);
+    lines.push(`【${g.name}】${rangeText}\n  合計${groupTotal} (${breakdownText}) / 組み合わせ${Object.keys(map).length}件${courseNote}`);
   });
   lines.push('\nこの内容を本日の受注データとして反映します。よろしいですか？');
   $('orderSummaryText').textContent = lines.join('\n');
@@ -2068,14 +2082,24 @@ $('orderApply').addEventListener('click', async ()=>{
   // replace this date's rows for each affected group, then bulk-insert the fresh aggregation
   for(const gid of Object.keys(pendingOrderImport)){
     if(gid === '__workDate') continue;
+    const {map, rangeTotals} = pendingOrderImport[gid];
     await sbDelete('orders',
       `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${workDate}&group_id=eq.${encodeURIComponent(gid)}`);
-    const rows = Object.values(pendingOrderImport[gid]).map(v => ({
+    const rows = Object.values(map).map(v => ({
       site_code: siteCode, work_date: workDate, group_id: gid,
       course_no: v.courseNo, store_no: v.storeNo, lots: v.lots, seq: v.seq||0, updated_at: updatedAt
     }));
     if(rows.length) await sbInsert('orders', rows);
-    ORDER_DATA[gid] = {map: pendingOrderImport[gid], loaded: true, updatedAt};
+
+    await sbDelete('order_range_summary',
+      `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${workDate}&group_id=eq.${encodeURIComponent(gid)}`);
+    const summaryRows = Object.entries(rangeTotals).map(([name, lots]) => ({
+      site_code: siteCode, work_date: workDate, group_id: gid,
+      range_name: name, lots, updated_at: updatedAt
+    }));
+    if(summaryRows.length) await sbInsert('order_range_summary', summaryRows);
+
+    ORDER_DATA[gid] = {map, loaded: true, updatedAt};
   }
 
   lastImportedFileWorkDate = fileWorkDate || null;
@@ -2088,6 +2112,63 @@ $('orderApply').addEventListener('click', async ()=>{
   );
   pendingOrderImport = null;
   $('orderOverlay').classList.remove('show');
+  await renderSidebarProgress();
+});
+
+// ---------- 履歴(今日、誰がどの店をやったか検索) ----------
+function renderHistoryTable(){
+  const courseFilter = $('historyCourseFilter').value.trim();
+  const workerFilter = $('historyWorkerFilter').value.trim();
+  const body = $('historyBody');
+
+  let rows = [...todayLog].filter(r => !r.cancelled);
+  if(courseFilter) rows = rows.filter(r => String(r.courseNo).includes(courseFilter));
+  if(workerFilter) rows = rows.filter(r => String(r.no).includes(workerFilter));
+  rows.sort((a,b)=> a.courseNo - b.courseNo || a.storeNo - b.storeNo);
+
+  if(rows.length === 0){
+    body.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:20px;">該当する記録がありません</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-family:'Space Mono',monospace;font-weight:700;">${r.courseNo}－${r.storeNo}</td>
+      <td>${escapeHtml(r.name)} <span style="color:var(--muted);font-size:12px;">(№${r.no})</span></td>
+    </tr>`).join('');
+}
+$('historyBtn').addEventListener('click', ()=>{
+  $('historyCourseFilter').value = '';
+  $('historyWorkerFilter').value = '';
+  renderHistoryTable();
+  $('historyOverlay').classList.add('show');
+});
+$('historyClose').addEventListener('click', ()=> $('historyOverlay').classList.remove('show'));
+
+// 履歴検索欄用の、アプリ内蔵テンキー(iPadのOSキーボードは使わない)
+let historyNumpadTargetId = null;
+function openHistoryNumpad(inputId, label){
+  historyNumpadTargetId = inputId;
+  $('historyNumpadLabel').textContent = label;
+  $('historyNumpadDisplay').textContent = $(inputId).value || ' ';
+  $('historyNumpadOverlay').classList.add('show');
+}
+$('historyCourseFilter').addEventListener('click', ()=> openHistoryNumpad('historyCourseFilter', 'コース№'));
+$('historyWorkerFilter').addEventListener('click', ()=> openHistoryNumpad('historyWorkerFilter', '担当者№'));
+$('historyNumpadOverlay').querySelectorAll('.numpad-key').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(!historyNumpadTargetId) return;
+    const input = $(historyNumpadTargetId);
+    const k = btn.getAttribute('data-k');
+    if(k === 'clear') input.value = '';
+    else if(k === 'back') input.value = input.value.slice(0, -1);
+    else input.value += k;
+    $('historyNumpadDisplay').textContent = input.value || ' ';
+    renderHistoryTable();
+  });
+});
+$('historyNumpadDone').addEventListener('click', ()=>{
+  $('historyNumpadOverlay').classList.remove('show');
+  historyNumpadTargetId = null;
 });
 
 // ---------- order data manual cleanup (前日の先行作業などで不要になった予定を消す) ----------
@@ -2142,6 +2223,7 @@ function renderOrderManageList(){
         }
         renderOrderManageList();
         if(step === 'pickStore') renderPickStoreList();
+        await renderSidebarProgress();
       });
     });
   });
