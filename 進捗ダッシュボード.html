@@ -93,6 +93,66 @@ table.perf td.name-col{text-align:left;font-family:'IBM Plex Sans JP';font-weigh
 table.perf tr:first-child td{color:var(--amber-deep);}
 
 .empty-msg{padding:20px;color:var(--muted);font-size:13px;}
+
+.sub-head .manage-btn{
+  background:var(--steel);color:#fff;border:none;padding:6px 12px;border-radius:6px;
+  font-size:11px;font-weight:600;font-family:'IBM Plex Sans JP';cursor:pointer;
+}
+.sub-head .manage-btn:active{background:#2F5670;}
+
+.overlay{
+  position:fixed;inset:0;background:rgba(20,24,31,.72);
+  display:flex;align-items:center;justify-content:center;z-index:50;
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.overlay.show{opacity:1;pointer-events:auto;}
+.admin-card{
+  background:var(--panel);border-radius:16px;width:min(640px,92vw);margin-top:5vh;max-height:88vh;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.admin-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:18px 22px;border-bottom:1px solid var(--line);}
+.admin-head h2{margin:0;font-size:19px;}
+.admin-body{overflow-y:auto;padding:0 22px 22px;flex:1;min-height:0;}
+.close-x{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);}
+
+.confirm-card{
+  background:var(--panel);border-radius:16px;padding:28px 30px;max-width:340px;text-align:center;
+}
+.confirm-card p{font-size:15px;line-height:1.6;margin:0 0 20px;}
+.confirm-card .cbtns{display:flex;gap:10px;}
+.confirm-card button{flex:1;padding:14px;border-radius:8px;border:none;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;}
+.confirm-card .yes{background:var(--amber);color:var(--ink);}
+.confirm-card .no{background:#EEEBE4;color:var(--ink);}
+
+.pick-store-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:6px;
+}
+.pick-store-item .psi-code{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;}
+.pick-store-item .psi-lots{font-size:12px;color:var(--muted);flex:1;}
+.psi-del{
+  background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;
+  width:30px;height:30px;font-size:14px;cursor:pointer;flex-shrink:0;
+}
+.psi-del:active{background:#FBEAE8;border-color:var(--red);color:var(--red);}
+.bin-hide-btn{
+  background:#F7F5F0;color:var(--red);border:1px solid var(--line);
+  padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;
+  font-family:'IBM Plex Sans JP';cursor:pointer;
+}
+.bin-hide-btn:active{background:#FBEAE8;}
+.psg-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:6px 4px 2px;margin-top:4px;
+}
+.psg-head:first-child{margin-top:0;}
+.psg-course{font-size:13px;font-weight:700;color:var(--steel);}
+.psg-count{font-size:11px;color:var(--muted);font-weight:500;margin-left:8px;}
+.psg-del{
+  width:auto;height:auto;padding:5px 10px;font-size:11px;font-weight:600;
+  font-family:'IBM Plex Sans JP';color:var(--muted);
+}
+.psg-del:active{background:#FBEAE8;border-color:var(--red);color:var(--red);}
 </style>
 </head>
 <body>
@@ -112,6 +172,31 @@ table.perf tr:first-child td{color:var(--amber-deep);}
   <div id="groupSections"></div>
 </main>
 
+<div class="overlay" id="orderManageOverlay">
+  <div class="admin-card">
+    <div class="admin-head">
+      <h2 id="orderManageTitle">受注データ確認</h2>
+      <button class="close-x" id="orderManageClose">&times;</button>
+    </div>
+    <div class="admin-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">残っている(未完了の)コース・店を、店単位・コース単位・便単位で削除できます。すでに完了した店は対象になりません。削除しても実績には影響しません。この操作は元に戻せません。</div>
+      <input type="text" id="orderManageFilter" placeholder="コース№で絞り込み" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-family:'Space Mono',monospace;font-size:14px;margin-bottom:14px;box-sizing:border-box;">
+      <div id="orderManageBinBar" style="display:none;gap:8px;margin-bottom:12px;flex-wrap:wrap;"></div>
+      <div id="orderManageList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay">
+  <div class="confirm-card">
+    <p id="confirmText"></p>
+    <div class="cbtns">
+      <button class="no" id="confirmNo">キャンセル</button>
+      <button class="yes" id="confirmYes">確認しました</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://pakdabwtszvlzzflfeci.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_VkfxCOHClg-MxPgLvVSCww_VEGJX5fY';
@@ -125,6 +210,28 @@ async function sbSelect(table, query=''){
     return await res.json();
   }catch(e){ console.error(e); return null; }
 }
+async function sbDelete(table, query){
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {method:'DELETE', headers: SB_HEADERS});
+    return res.ok;
+  }catch(e){ console.error(e); return false; }
+}
+
+let confirmCb = null;
+function showConfirm(text, cb){
+  $('confirmText').textContent = text;
+  confirmCb = cb;
+  $('confirmOverlay').classList.add('show');
+}
+$('confirmYes').addEventListener('click', ()=>{
+  $('confirmOverlay').classList.remove('show');
+  if(confirmCb) confirmCb();
+  confirmCb = null;
+});
+$('confirmNo').addEventListener('click', ()=>{
+  $('confirmOverlay').classList.remove('show');
+  confirmCb = null;
+});
 function localGet(key){ try{ const v = localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function localSet(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){} }
 
@@ -245,6 +352,7 @@ function renderBinCards(results){
 }
 
 // ---------- data loading ----------
+let LAST = { siteCode:null, groups: [], ordersByGroup: {}, logs: [], sessions: [], courseBinMap: {} };
 async function loadSiteOptions(){
   const rows = await sbSelect('work_groups', 'select=site_code');
   const sites = [...new Set((rows||[]).map(r=>r.site_code))].sort();
@@ -292,6 +400,8 @@ async function refresh(){
     ordersByGroup[r.group_id].push({courseNo: r.course_no, storeNo: r.store_no, lots: r.lots});
   });
 
+  LAST = { siteCode, groups: groups||[], ordersByGroup, logs, sessions, courseBinMap };
+
   const now = new Date();
   const sectionsHtml = (groups||[]).map(g=>{
     const planEntries = ordersByGroup[g.id] || [];
@@ -326,11 +436,18 @@ async function refresh(){
         <div class="sub-head"><h4>本日の個人成績</h4></div>
         ${perfHtml}
       </div>
+      <div class="sub-block">
+        <div class="sub-head"><h4>受注データ</h4><button class="manage-btn" data-group="${g.id}">受注データ確認</button></div>
+      </div>
     </div>`;
   }).join('');
 
   $('groupSections').innerHTML = sectionsHtml || '<div class="empty-msg">この拠点にはまだ作業グループがありません。</div>';
+  $('groupSections').querySelectorAll('.manage-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> openOrderManage(btn.getAttribute('data-group')));
+  });
   $('updatedText').textContent = '最終更新: ' + fmtTimeShort(now.toISOString());
+  if($('orderManageOverlay').classList.contains('show')) renderOrderManageList();
 }
 
 function renderGroupWorkers(openInGroup){
@@ -382,6 +499,133 @@ function tickClock(){
   const d = new Date();
   const pad = n=>String(n).padStart(2,'0');
   $('clock').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// ---------- 受注データ確認(店単位・コース単位・便単位で、残っている予定を削除) ----------
+let manageGroupId = null;
+
+function busyKeysForGroup(groupId){
+  const keys = new Set();
+  LAST.logs.forEach(l=>{ if(l.groupId === groupId) keys.add(l.courseNo+'-'+l.storeNo); });
+  LAST.sessions.forEach(s=>{ if(s.groupId === groupId) keys.add(s.courseNo+'-'+s.storeNo); });
+  return keys;
+}
+
+function openOrderManage(groupId){
+  manageGroupId = groupId;
+  const g = (LAST.groups||[]).find(x=>x.id===groupId);
+  $('orderManageTitle').textContent = '受注データ確認' + (g ? ` ・ ${g.name}` : '');
+  $('orderManageFilter').value = '';
+  renderOrderManageList();
+  $('orderManageOverlay').classList.add('show');
+}
+$('orderManageClose').addEventListener('click', ()=> $('orderManageOverlay').classList.remove('show'));
+$('orderManageFilter').addEventListener('input', renderOrderManageList);
+
+function renderOrderManageList(){
+  const list = $('orderManageList');
+  const binBar = $('orderManageBinBar');
+  const g = (LAST.groups||[]).find(x=>x.id===manageGroupId);
+  const orderEntries = LAST.ordersByGroup[manageGroupId] || [];
+  if(!g || orderEntries.length === 0){
+    list.innerHTML = '<div class="empty-msg">本日の受注データがまだありません</div>';
+    binBar.style.display = 'none'; binBar.innerHTML = '';
+    return;
+  }
+  const filterText = $('orderManageFilter').value.trim();
+  const busy = busyKeysForGroup(manageGroupId);
+  const remaining = orderEntries.filter(e => !busy.has(e.courseNo+'-'+e.storeNo));
+
+  // 便(1便/2便)一括削除バー
+  const binsPresent = [...new Set(remaining.map(e => LAST.courseBinMap[e.courseNo]).filter(b => b !== undefined))].sort((a,b)=>a-b);
+  if(binsPresent.length > 1){
+    binBar.style.display = 'flex';
+    binBar.innerHTML = binsPresent.map(b =>
+      `<button class="bin-hide-btn" data-bin="${b}">${b}便の残りを削除</button>`).join('');
+    binBar.querySelectorAll('.bin-hide-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const bin = parseInt(btn.getAttribute('data-bin'), 10);
+        const targets = remaining.filter(e => LAST.courseBinMap[e.courseNo] === bin);
+        const courseCount = new Set(targets.map(e=>e.courseNo)).size;
+        if(targets.length === 0) return;
+        showConfirm(`${bin}便の残り予定(${courseCount}コース・${targets.length}店)をまとめて削除します。完了済みの店には影響しません。この操作は元に戻せません。よろしいですか？`, ()=>{
+          deleteOrderEntries(targets);
+        });
+      });
+    });
+  } else {
+    binBar.style.display = 'none';
+    binBar.innerHTML = '';
+  }
+
+  const byCourse = {};
+  orderEntries.forEach(e=>{
+    if(!byCourse[e.courseNo]) byCourse[e.courseNo] = {courseNo: e.courseNo, done: 0, remainingItems: []};
+    if(busy.has(e.courseNo+'-'+e.storeNo)) byCourse[e.courseNo].done += 1;
+    else byCourse[e.courseNo].remainingItems.push(e);
+  });
+  let courses = Object.values(byCourse).sort((a,b)=> a.courseNo-b.courseNo);
+  if(filterText) courses = courses.filter(c => String(c.courseNo).includes(filterText));
+  if(courses.length === 0){
+    list.innerHTML = '<div class="empty-msg">該当するコースがありません</div>';
+    return;
+  }
+
+  list.innerHTML = courses.map(c => {
+    const remainCount = c.remainingItems.length;
+    const doneNote = c.done > 0 ? `<span class="psg-count">(完了${c.done}件は対象外)</span>` : '';
+    const courseDelBtn = remainCount > 0
+      ? `<button class="psi-del psg-del" data-course="${c.courseNo}" title="このコースの残りをすべて削除">🗑 コース削除</button>`
+      : '';
+    const storeRows = c.remainingItems
+      .sort((a,b)=> a.storeNo - b.storeNo)
+      .map(e => `
+      <div class="pick-store-item" data-course="${e.courseNo}" data-store="${e.storeNo}">
+        <div class="psi-code">${e.courseNo} － ${e.storeNo}</div>
+        <div class="psi-lots">${e.lots}個口予定</div>
+        <button class="psi-del" data-course="${e.courseNo}" data-store="${e.storeNo}" title="この店を削除">🗑</button>
+      </div>`).join('');
+    return `
+      <div class="psg-head">
+        <span class="psg-course">コース${c.courseNo}<span class="psg-count">残り${remainCount}店</span>${doneNote}</span>
+        ${courseDelBtn}
+      </div>
+      ${storeRows || '<div class="empty-msg" style="padding:10px;">残っている店はありません(すべて完了)</div>'}
+    `;
+  }).join('');
+
+  list.querySelectorAll('.psi-del:not(.psg-del)').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const courseNo = parseInt(btn.getAttribute('data-course'), 10);
+      const storeNo = parseInt(btn.getAttribute('data-store'), 10);
+      showConfirm(`コース${courseNo} － 店${storeNo} の予定を削除します。実績には影響しません。この操作は元に戻せません。よろしいですか？`, ()=>{
+        deleteOrderEntries([{courseNo, storeNo}]);
+      });
+    });
+  });
+  list.querySelectorAll('.psg-del').forEach(btn=>{
+    btn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const courseNo = parseInt(btn.getAttribute('data-course'), 10);
+      const targets = byCourse[courseNo].remainingItems;
+      showConfirm(`コース${courseNo}の残り予定(${targets.length}店)をまとめて削除します。完了済みの店には影響しません。この操作は元に戻せません。よろしいですか？`, ()=>{
+        deleteOrderEntries(targets);
+      });
+    });
+  });
+}
+
+async function deleteOrderEntries(entries){
+  const siteCode = LAST.siteCode;
+  const groupId = manageGroupId;
+  if(!siteCode || !groupId || entries.length === 0) return;
+  const workDate = todayKey();
+  await Promise.all(entries.map(e => sbDelete('orders',
+    `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${workDate}&group_id=eq.${encodeURIComponent(groupId)}&course_no=eq.${e.courseNo}&store_no=eq.${e.storeNo}`
+  )));
+  await refresh();
+  if($('orderManageOverlay').classList.contains('show')) renderOrderManageList();
 }
 
 $('siteSelect').addEventListener('change', refresh);
