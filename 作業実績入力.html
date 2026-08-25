@@ -778,7 +778,12 @@ function renderClock(){ $('clock').textContent = fmtClock(); }
 
 function renderWorkingList(){
   const list = $('workingList');
-  const entries = Object.values(sessions);
+  // この端末に割り当てられた作業グループだけを表示する(端末=1グループ専用の運用のため)。
+  // グループ未設定の端末では、これまで通り全グループ横断で表示する(フォールバック)。
+  const activeGroup = resolveActiveGroup();
+  const entries = activeGroup
+    ? Object.values(sessions).filter(s => s.groupId === activeGroup.id)
+    : Object.values(sessions);
   $('workingCount').textContent = entries.length + '人';
   if(entries.length === 0){
     list.innerHTML = '<div class="working-empty">現在作業中の担当者はいません</div>';
