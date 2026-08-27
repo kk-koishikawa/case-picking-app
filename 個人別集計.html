@@ -108,7 +108,7 @@ table.raw-table input{padding:5px;border:1px solid var(--line);border-radius:5px
 .print-only{display:none;}
 
 @media print{
-  @page{ size: landscape; margin: 12mm; }
+  @page{ size: A3 portrait; margin: 12mm; }
   body{ background:#fff; }
   #appHeader, .controls, .sort-row{ display:none !important; }
   tr.detail-row{ display:none !important; }
@@ -168,13 +168,13 @@ table.raw-table input{padding:5px;border:1px solid var(--line);border-radius:5px
     <table id="resultTable">
       <thead>
         <tr class="group-row">
-          <th colspan="2"></th>
+          <th colspan="1"></th>
           <th colspan="4">1便</th>
           <th colspan="4">2便</th>
           <th colspan="4">合計</th>
         </tr>
         <tr class="col-row">
-          <th class="name-col">氏名</th><th>区分</th>
+          <th class="name-col">氏名</th>
           <th>店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
           <th class="group-sep">店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
           <th class="group-sep">店舗数</th><th>数量</th><th>作業時間(分)</th><th>生産性</th>
@@ -316,7 +316,7 @@ async function render(){
   localSet('report_site_code', siteCode);
   localSet('report_group_id_'+siteCode, groupId);
 
-  $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg">読み込み中…</td></tr>';
+  $('resultBody').innerHTML = '<tr><td colspan="13" class="empty-msg">読み込み中…</td></tr>';
   $('summaryBar').innerHTML = '';
 
   const [binMap, rosterMap, logRows] = await Promise.all([
@@ -327,11 +327,11 @@ async function render(){
   lastGroupBinMap = binMap;
 
   if(logRows === null){
-    $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg" style="color:var(--red);">⚠ 通信エラーでデータを取得できませんでした。もう一度お試しください。</td></tr>';
+    $('resultBody').innerHTML = '<tr><td colspan="13" class="empty-msg" style="color:var(--red);">⚠ 通信エラーでデータを取得できませんでした。もう一度お試しください。</td></tr>';
     return;
   }
   if(logRows.length === 0){
-    $('resultBody').innerHTML = '<tr><td colspan="14" class="empty-msg">この日の実績データがありません</td></tr>';
+    $('resultBody').innerHTML = '<tr><td colspan="13" class="empty-msg">この日の実績データがありません</td></tr>';
     rawLogsByWorker = {};
     return;
   }
@@ -393,9 +393,9 @@ $('csvBtn').addEventListener('click', ()=>{
   if(lastPeople.length === 0){ alert('ダウンロードできるデータがありません'); return; }
   const siteCode = $('siteSelect').value;
   const dateStr = $('dateInput').value;
-  const header = ['担当者№','氏名','区分','1便_店舗数','1便_数量','1便_作業時間分','1便_生産性','2便_店舗数','2便_数量','2便_作業時間分','2便_生産性','合計_店舗数','合計_数量','合計_作業時間分','合計_生産性'];
+  const header = ['担当者№','氏名','1便_店舗数','1便_数量','1便_作業時間分','1便_生産性','2便_店舗数','2便_数量','2便_作業時間分','2便_生産性','合計_店舗数','合計_数量','合計_作業時間分','合計_生産性'];
   const rows = lastPeople.map(p=>[
-    p.no, p.name, p.category,
+    p.no, p.name,
     p.bin1.stores, p.bin1.count, p.bin1.minutes, p.bin1.productivity,
     p.bin2.stores, p.bin2.count, p.bin2.minutes, p.bin2.productivity,
     p.total.stores, p.total.count, p.total.minutes, p.total.productivity
@@ -433,14 +433,13 @@ function renderTable(people){
     const summaryRow = `
     <tr class="person-row${isOpen?' open':''}" data-no="${p.no}">
       <td class="name-col"><span class="arrow">${isOpen?'▼':'▶'}</span> ${esc(p.name)}<span style="color:var(--muted);font-size:11px;"> (№${p.no})</span></td>
-      <td class="cat-col">${esc(p.category)}</td>
       <td>${p.bin1.stores}</td><td>${p.bin1.count}</td><td>${p.bin1.minutes}</td><td>${p.bin1.productivity}</td>
       <td class="group-sep">${p.bin2.stores}</td><td>${p.bin2.count}</td><td>${p.bin2.minutes}</td><td>${p.bin2.productivity}</td>
       <td class="group-sep total-col">${p.total.stores}</td><td class="total-col">${p.total.count}</td><td class="total-col">${p.total.minutes}</td><td class="total-col total-prod">${p.total.productivity}</td>
     </tr>`;
     const detailRow = isOpen ? `
     <tr class="detail-row" data-no="${p.no}">
-      <td colspan="14">${renderPersonDetail(p.no)}</td>
+      <td colspan="13">${renderPersonDetail(p.no)}</td>
     </tr>` : '';
     return summaryRow + detailRow;
   }).join('');
