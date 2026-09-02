@@ -786,7 +786,10 @@ async function refreshFromServer(){
   renderWorkingList();
   await renderSidebarProgress();
   if(step === 'pickStore') renderPickStoreList();
-  if($('historyOverlay').classList.contains('show')) renderHistoryTable();
+  // 履歴の編集中(テンキーで数字を打っている最中)は、自動更新のたびに編集行を
+  // サーバー上の(まだ保存されていない)元の値で再描画してしまい、入力した数字が
+  // 消えてしまうバグがあったため、編集中は再描画をスキップする。
+  if($('historyOverlay').classList.contains('show') && editingHistoryId === null) renderHistoryTable();
 }
 
 // ---------- rendering ----------
