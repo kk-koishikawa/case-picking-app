@@ -782,6 +782,21 @@ function mergeWorkLogRows(rows){
   todayLog.sort((a,b)=> new Date(b.startISO) - new Date(a.startISO));
 }
 
+// 他の端末(事務所PCなど)で受注データを取り込んだ・削除した時に、この端末へ反映する。(2026/10/6)
+// これまで受注データは起動時・日付変更時・この端末での取込時にしか読み直しておらず、
+// 事務所で朝配を追加取込しても、現場端末は⟳更新を押すまで反映されなかった。
+//  ・毎回の定期更新: 今日の受注の最新 updated_at を1行だけ取得し、変わっていれば全件読み直す(新規取込を検知)
+//  ・全件同期の回(約10分ごと): 削除も反映されるよう、変化がなくても全件読み直す
+async function refreshOrdersIfChanged(siteCode, fullSync){
+  if(Date.now() - ordersLoadedAt < 5000) return; // 直前に読み込んだばかり(起動時・取込直後など)
+  if(fullSync){ await loadOrders(); return; }
+  const latest = await sbSelect('orders',
+    `site_code=eq.${encodeURIComponent(siteCode)}&work_date=eq.${todayKey()}&select=updated_at&order=updated_at.desc&limit=1`);
+  if(!latest) return; // 通信エラー時は今の表示のまま
+  const stamp = latest.length ? (latest[0].updated_at || '') : '';
+  if(stamp !== ordersLatestStamp) await loadOrders();
+}
+
 async function refreshFromServer(fullSync=false){
   const siteCode = appSettings.siteCode;
   if(!siteCode) return;
@@ -802,6 +817,8 @@ async function refreshFromServer(fullSync=false){
     lastWorkLogFetchAt = null; // 日付が変わったのでwork_logも全件取得し直す
     fullSync = true;
   }
+
+  await refreshOrdersIfChanged(siteCode, fullSync);
 
   const sessRows = await sbSelect('active_sessions', `site_code=eq.${encodeURIComponent(siteCode)}`);
   if(sessRows){
@@ -1964,7 +1981,12 @@ function setOrderStatus(text, color){
   $('orderStatus').querySelector('.dot').style.background = color || 'var(--muted)';
 }
 
+// 受注データの変化検知用(他の端末で取り込んだ受注を、定期更新で反映するため 2026/10/6)
+let ordersLatestStamp = null;   // 今日の受注データの updated_at の最大値
+let ordersLoadedAt = 0;         // 最後に受注データを読み込んだ時刻(ミリ秒)
 async function loadOrders(){
+  ordersLoadedAt = Date.now();
+  ordersLatestStamp = '';
   ORDER_DATA = {};
   (appSettings.groups||[]).forEach(g=>{ ORDER_DATA[g.id] = {map:{}, loaded:false, updatedAt:null}; });
 
@@ -1983,6 +2005,7 @@ async function loadOrders(){
       gd.updatedAt = r.updated_at;
       gd.map[r.course_no + '-' + r.store_no] = {courseNo: r.course_no, storeNo: r.store_no, lots: r.lots, seq: r.seq||0, bin: r.bin};
     });
+    ordersLatestStamp = rows.reduce((m, r)=> (r.updated_at && r.updated_at > m) ? r.updated_at : m, '');
   }
   const loadedCount = Object.values(ORDER_DATA).filter(d=>d.loaded).length;
   const total = (appSettings.groups||[]).length;
